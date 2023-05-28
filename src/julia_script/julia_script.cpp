@@ -1,6 +1,7 @@
 #include "julia_script.h"
 
 #include "julia_language.h"
+#include "julia_script_instance.h"
 
 void JuliaScript::_notification(int p_what) {
 }
@@ -9,7 +10,12 @@ void JuliaScript::_bind_methods() {
 }
 
 bool JuliaScript::can_instantiate() const {
-	return false;
+#ifdef TOOLS_ENABLED
+	bool extra_cond = tool || ScriptServer::is_scripting_enabled();
+#else
+	bool extra_cond = true;
+#endif
+	return valid && extra_cond;
 }
 
 Ref<Script> JuliaScript::get_base_script() const {
@@ -29,7 +35,10 @@ StringName JuliaScript::get_instance_base_type() const {
 }
 
 ScriptInstance *JuliaScript::instance_create(Object *p_this) {
-	return nullptr;
+	JuliaScriptInstance *instance = memnew(JuliaScriptInstance(Ref<JuliaScript>(this)));
+	instance->owner = p_this;
+	instance->owner->set_script_instance(instance);
+	return instance;
 }
 
 bool JuliaScript::instance_has(const Object *p_this) const {
@@ -70,14 +79,6 @@ bool JuliaScript::has_method(const StringName &p_method) const {
 
 MethodInfo JuliaScript::get_method_info(const StringName &p_method) const {
 	return MethodInfo();
-}
-
-bool JuliaScript::is_tool() const {
-	return false;
-}
-
-bool JuliaScript::is_valid() const {
-	return false;
 }
 
 ScriptLanguage *JuliaScript::get_language() const {

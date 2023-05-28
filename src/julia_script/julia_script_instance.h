@@ -3,7 +3,15 @@
 
 #include "core/object/script_language.h"
 
+class JuliaScript;
+
 class JuliaScriptInstance : ScriptInstance {
+	friend class JuliaScript;
+
+	Object *owner = nullptr;
+	Ref<JuliaScript> script;
+
+public:
 	bool set(const StringName &p_name, const Variant &p_value) override;
 	bool get(const StringName &p_name, Variant &r_ret) const override;
 	void get_property_list(List<PropertyInfo> *p_properties) const override;
@@ -41,7 +49,8 @@ class JuliaScriptInstance : ScriptInstance {
 
 	ScriptLanguage *get_language() override;
 
-    virtual ~JuliaScriptInstance() {}
+	JuliaScriptInstance(const Ref<JuliaScript> &p_script);
+	virtual ~JuliaScriptInstance() {}
 };
 
 #endif // JULIA_SCRIPT_INSTANCE_H

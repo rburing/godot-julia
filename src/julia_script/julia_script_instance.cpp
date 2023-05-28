@@ -1,5 +1,7 @@
 #include "julia_script_instance.h"
 
+#include "julia_script.h"
+
 bool JuliaScriptInstance::set(const StringName &p_name, const Variant &p_value) {
 	return false;
 }
@@ -64,4 +66,8 @@ Variant JuliaScriptInstance::property_get_fallback(const StringName &p_name, boo
 
 ScriptLanguage *JuliaScriptInstance::get_language() {
 	return nullptr;
+}
+
+JuliaScriptInstance::JuliaScriptInstance(const Ref<JuliaScript> &p_script) :
+		script(p_script) {
 }

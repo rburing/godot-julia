@@ -9,6 +9,8 @@ class JuliaScript : public Script {
 	GDCLASS(JuliaScript, Script);
 
 	String source_code;
+	bool valid = true;
+	bool tool = false;
 
 protected:
 	void _notification(int p_what);
@@ -41,8 +43,8 @@ public:
 	bool has_method(const StringName &p_method) const override;
 	MethodInfo get_method_info(const StringName &p_method) const override;
 
-	bool is_tool() const override;
-	bool is_valid() const override;
+	bool is_tool() const override { return tool; }
+	bool is_valid() const override { return valid; }
 
 	ScriptLanguage *get_language() const override;
 
