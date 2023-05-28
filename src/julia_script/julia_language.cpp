@@ -1,10 +1,14 @@
 #include "julia_language.h"
 
+#include "julia_script.h"
+
+JuliaLanguage *JuliaLanguage::singleton = nullptr;
+
 void JuliaLanguage::_bind_methods() {
 }
 
 String JuliaLanguage::get_name() const {
-	return "";
+	return "Julia";
 }
 
 /* LANGUAGE FUNCTIONS */
@@ -13,11 +17,11 @@ void JuliaLanguage::init() {
 }
 
 String JuliaLanguage::get_type() const {
-	return "";
+	return "JuliaScript";
 }
 
 String JuliaLanguage::get_extension() const {
-	return "";
+	return "jl";
 }
 
 void JuliaLanguage::finish() {
@@ -39,11 +43,15 @@ void JuliaLanguage::get_string_delimiters(List<String> *p_delimiters) const {
 }
 
 Ref<Script> JuliaLanguage::make_template(const String &p_template, const String &p_class_name, const String &p_base_class_name) const {
-	return Ref<Script>();
+	Ref<JuliaScript> julia_script;
+	julia_script.instantiate();
+	// TODO: Implement script templates.
+	return julia_script;
 }
 
 bool JuliaLanguage::validate(const String &p_script, const String &p_path, List<String> *r_functions, List<ScriptError> *r_errors, List<Warning> *r_warnings, HashSet<int> *r_safe_lines) const {
-	return false;
+	// TODO: Implement validation.
+	return true;
 }
 
 String JuliaLanguage::validate_path(const String &p_path) const {
@@ -51,7 +59,7 @@ String JuliaLanguage::validate_path(const String &p_path) const {
 }
 
 Script *JuliaLanguage::create_script() const {
-	return nullptr;
+	return memnew(JuliaScript);
 }
 
 int JuliaLanguage::find_function(const String &p_function, const String &p_code) const {
@@ -130,6 +138,7 @@ void JuliaLanguage::reload_tool_script(const Ref<Script> &p_script, bool p_soft_
 /* LOADER FUNCTIONS */
 
 void JuliaLanguage::get_recognized_extensions(List<String> *p_extensions) const {
+	p_extensions->push_back("jl");
 }
 
 void JuliaLanguage::get_public_functions(List<MethodInfo> *p_functions) const {
@@ -167,7 +176,10 @@ String JuliaLanguage::get_global_class_name(const String &p_path, String *r_base
 }
 
 JuliaLanguage::JuliaLanguage() {
+	ERR_FAIL_COND_MSG(singleton, "Julia singleton already exists.");
+	singleton = this;
 }
 
 JuliaLanguage::~JuliaLanguage() {
+	singleton = nullptr;
 }

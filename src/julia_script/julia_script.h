@@ -1,12 +1,14 @@
 #ifndef JULIA_SCRIPT_H
 #define JULIA_SCRIPT_H
 
-#include "core/object/script_language.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+#include "core/object/script_language.h"
 
 class JuliaScript : public Script {
 	GDCLASS(JuliaScript, Script);
+
+	String source_code;
 
 protected:
 	void _notification(int p_what);

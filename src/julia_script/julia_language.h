@@ -2,16 +2,23 @@
 #define JULIA_LANGUAGE_H
 
 #include "core/object/script_language.h"
+#include "core/typedefs.h"
 
 using namespace godot;
 
 class JuliaLanguage : public ScriptLanguage {
 	GDCLASS(JuliaLanguage, ScriptLanguage);
 
+	static JuliaLanguage *singleton;
+
 protected:
 	static void _bind_methods();
 
 public:
+	_FORCE_INLINE_ static JuliaLanguage *get_singleton() {
+		return singleton;
+	}
+
 	String get_name() const override;
 
 	/* LANGUAGE FUNCTIONS */
@@ -90,7 +97,7 @@ public:
 	String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr) const override;
 
 	JuliaLanguage();
-	~JuliaLanguage();
+	virtual ~JuliaLanguage();
 };
 
 #endif // JULIA_LANGUAGE_H
