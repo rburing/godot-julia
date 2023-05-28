@@ -1,0 +1,8 @@
+# Binaries
+*.o
+
+# Python
+__pycache__/
+
+# Editor
+.vscode/
