@@ -9,6 +9,27 @@ void JuliaScript::_notification(int p_what) {
 void JuliaScript::_bind_methods() {
 }
 
+bool JuliaScript::_get(const StringName &p_name, Variant &r_ret) const {
+	if (p_name == JuliaLanguage::get_singleton()->string_names._script_source) {
+		r_ret = get_source_code();
+		return true;
+	}
+	return false;
+}
+
+bool JuliaScript::_set(const StringName &p_name, const Variant &p_value) {
+	if (p_name == JuliaLanguage::get_singleton()->string_names._script_source) {
+		set_source_code(p_value);
+		reload();
+		return true;
+	}
+	return false;
+}
+
+void JuliaScript::_get_property_list(List<PropertyInfo> *p_properties) const {
+	p_properties->push_back(PropertyInfo(Variant::STRING, JuliaLanguage::get_singleton()->string_names._script_source, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
+}
+
 bool JuliaScript::can_instantiate() const {
 #ifdef TOOLS_ENABLED
 	bool extra_cond = tool || ScriptServer::is_scripting_enabled();
@@ -58,7 +79,26 @@ void JuliaScript::set_source_code(const String &p_code) {
 }
 
 Error JuliaScript::reload(bool p_keep_state) {
-	return Error();
+	valid = true;
+	julia_module = jl_eval_string(source_code.utf8());
+	if (jl_exception_occurred()) {
+		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary?
+		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
+				jl_get_function(jl_base_module, "showerror"),
+				jl_exception_occurred());
+		ERR_PRINT("Julia script " + get_path() + " throws an exception: " + jl_string_ptr(exception_str));
+		valid = false;
+	} else if (!jl_is_module(julia_module)) {
+		ERR_PRINT("Julia script " + get_path() + " is not a module");
+		valid = false;
+		julia_module = nullptr; // TODO: useful?
+	}
+
+	if (valid) {
+		// TODO: Update script class info.
+	}
+
+	return OK;
 }
 
 #ifdef TOOLS_ENABLED
@@ -120,6 +160,9 @@ Ref<Resource> ResourceFormatLoaderJuliaScript::load(const String &p_path, const 
 	ERR_FAIL_COND_V_MSG(source_file.is_null(), julia_script, "Failed to read Julia script file '" + p_path + "'.");
 	julia_script->set_source_code(source_file->get_as_text());
 	julia_script->set_path(p_original_path);
+
+	// TODO: Is it correct to defer to the main thread here?
+	julia_script->call_deferred(SNAME("reload"));
 
 	if (r_error) {
 		*r_error = OK;

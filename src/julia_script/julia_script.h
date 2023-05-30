@@ -5,16 +5,24 @@
 #include "core/io/resource_saver.h"
 #include "core/object/script_language.h"
 
+#include <julia.h>
+
 class JuliaScript : public Script {
 	GDCLASS(JuliaScript, Script);
 
 	String source_code;
-	bool valid = true;
+	bool valid = false;
 	bool tool = false;
+
+	jl_value_t *julia_module = nullptr;
 
 protected:
 	void _notification(int p_what);
 	static void _bind_methods();
+
+	bool _get(const StringName &p_name, Variant &r_ret) const;
+	bool _set(const StringName &p_name, const Variant &p_value);
+	void _get_property_list(List<PropertyInfo> *p_properties) const;
 
 	void _placeholder_erased(PlaceHolderScriptInstance *p_placeholder) override {}
 

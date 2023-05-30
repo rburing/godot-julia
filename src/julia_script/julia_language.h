@@ -19,6 +19,10 @@ public:
 		return singleton;
 	}
 
+	struct {
+		StringName _script_source;
+	} string_names;
+
 	String get_name() const override;
 
 	/* LANGUAGE FUNCTIONS */

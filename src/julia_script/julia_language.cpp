@@ -178,6 +178,7 @@ String JuliaLanguage::get_global_class_name(const String &p_path, String *r_base
 JuliaLanguage::JuliaLanguage() {
 	ERR_FAIL_COND_MSG(singleton, "Julia singleton already exists.");
 	singleton = this;
+	string_names._script_source = StaticCString::create("script/source");
 }
 
 JuliaLanguage::~JuliaLanguage() {
