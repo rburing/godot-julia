@@ -1,3 +1,17 @@
-Import('env')
+Import("env")
 
-env.add_source_files(env.modules_sources, "*.cpp")
+# Compilation
+julia_include = env["julia_include"]
+env_julia = env.Clone()
+env_julia.Append(CPPPATH=[julia_include])
+env_julia.add_source_files(env.modules_sources, "*.cpp")
+
+# Linking
+julia_lib = env["julia_lib"]
+env.Append(LIBPATH=[julia_lib])
+env.Append(LIBS=["julia"])
+env.Append(
+    LINKFLAGS=[
+        '-Wl,-rpath,"' + julia_lib + '"',
+    ]
+)

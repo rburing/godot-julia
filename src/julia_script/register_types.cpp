@@ -6,6 +6,8 @@
 #include "julia_language.h"
 #include "julia_script.h"
 
+#include <julia.h>
+
 JuliaLanguage *script_language_jl = nullptr;
 Ref<ResourceFormatLoaderJuliaScript> resource_loader_jl;
 Ref<ResourceFormatSaverJuliaScript> resource_saver_jl;
@@ -14,6 +16,8 @@ void initialize_julia_script_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
+
+	jl_init();
 
 	GDREGISTER_CLASS(JuliaLanguage);
 	GDREGISTER_CLASS(JuliaScript);
@@ -44,4 +48,6 @@ void uninitialize_julia_script_module(ModuleInitializationLevel p_level) {
 
 	ResourceSaver::remove_resource_format_saver(resource_saver_jl);
 	resource_saver_jl.unref();
+
+	jl_atexit_hook(0);
 }
