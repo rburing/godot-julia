@@ -3,6 +3,8 @@
 #include "julia_language.h"
 #include "julia_script_instance.h"
 
+#include "core/os/thread.h"
+
 void JuliaScript::_notification(int p_what) {
 }
 
@@ -81,6 +83,10 @@ void JuliaScript::set_source_code(const String &p_code) {
 Error JuliaScript::reload(bool p_keep_state) {
 	valid = false;
 	julia_module = nullptr;
+
+	// TODO: Handle reloading requests from threads.
+	ERR_FAIL_COND_V_MSG(Thread::get_caller_id() != Thread::get_main_id(), FAILED, "Tried to reload Julia script " + get_path() + " from a separate thread; this is not supported for now.");
+
 	jl_value_t *julia_module_maybe = jl_eval_string(source_code.utf8());
 	if (jl_exception_occurred()) {
 		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary?
@@ -161,8 +167,7 @@ Ref<Resource> ResourceFormatLoaderJuliaScript::load(const String &p_path, const 
 	julia_script->set_source_code(source_file->get_as_text());
 	julia_script->set_path(p_original_path);
 
-	// TODO: Is it correct to defer to the main thread here?
-	julia_script->call_deferred(SNAME("reload"));
+	julia_script->reload();
 
 	if (r_error) {
 		*r_error = OK;
