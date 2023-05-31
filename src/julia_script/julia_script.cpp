@@ -79,24 +79,24 @@ void JuliaScript::set_source_code(const String &p_code) {
 }
 
 Error JuliaScript::reload(bool p_keep_state) {
-	valid = true;
-	julia_module = jl_eval_string(source_code.utf8());
+	valid = false;
+	julia_module = nullptr;
+	jl_value_t *julia_module_maybe = jl_eval_string(source_code.utf8());
 	if (jl_exception_occurred()) {
 		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary?
 		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
 				jl_get_function(jl_base_module, "showerror"),
 				jl_exception_occurred());
 		ERR_PRINT("Julia script " + get_path() + " throws an exception: " + jl_string_ptr(exception_str));
-		valid = false;
-	} else if (!jl_is_module(julia_module)) {
+		return FAILED;
+	} else if (!jl_is_module(julia_module_maybe)) {
 		ERR_PRINT("Julia script " + get_path() + " is not a module");
-		valid = false;
-		julia_module = nullptr; // TODO: useful?
+		return FAILED;
 	}
 
-	if (valid) {
-		// TODO: Update script class info.
-	}
+	valid = true;
+	julia_module = (jl_module_t *)julia_module_maybe;
+	// TODO: Update script class info.
 
 	return OK;
 }

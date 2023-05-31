@@ -14,7 +14,7 @@ class JuliaScript : public Script {
 	bool valid = false;
 	bool tool = false;
 
-	jl_value_t *julia_module = nullptr;
+	jl_module_t *julia_module = nullptr;
 
 protected:
 	void _notification(int p_what);
