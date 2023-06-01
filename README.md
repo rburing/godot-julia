@@ -14,5 +14,5 @@ This module adds support for [**Julia**](https://github.com/JuliaLang/julia) as 
 
 3. Compile Godot with the module, for the desired `target` (`editor`, `template_debug`, or `template_release`):
 
-       scons target=editor custom_modules=/path/to/godot-julia-script/src/julia_script
+       scons target=editor custom_modules=/path/to/godot-julia-script/src/julia_script julia_include=/path/to/julia/include/julia julia_lib=/path/to/julia/lib
 
