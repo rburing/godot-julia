@@ -58,7 +58,19 @@ StringName JuliaScript::get_instance_base_type() const {
 }
 
 ScriptInstance *JuliaScript::instance_create(Object *p_this) {
+#ifdef DEBUG_ENABLED
+	CRASH_COND(!valid);
+#endif
+
 	JuliaScriptInstance *instance = memnew(JuliaScriptInstance(Ref<JuliaScript>(this)));
+	if (!instance->julia_instance) {
+		memdelete(instance);
+		// At this point an error message was already printed in the JuliaScriptInstance constructor.
+		return nullptr;
+	}
+
+	// TODO: Check inheritance.
+
 	instance->owner = p_this;
 	instance->owner->set_script_instance(instance);
 	return instance;
@@ -89,19 +101,33 @@ Error JuliaScript::reload(bool p_keep_state) {
 
 	jl_value_t *julia_module_maybe = jl_eval_string(source_code.utf8());
 	if (jl_exception_occurred()) {
-		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary?
+		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary.
 		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
 				jl_get_function(jl_base_module, "showerror"),
 				jl_exception_occurred());
-		ERR_PRINT("Julia script " + get_path() + " throws an exception: " + jl_string_ptr(exception_str));
-		return FAILED;
-	} else if (!jl_is_module(julia_module_maybe)) {
-		ERR_PRINT("Julia script " + get_path() + " is not a module");
-		return FAILED;
+		ERR_FAIL_V_MSG(FAILED, "Julia script " + get_path() + " throws an exception: " + jl_string_ptr(exception_str));
 	}
+
+	ERR_FAIL_COND_V_MSG(!jl_is_module(julia_module_maybe), FAILED, "Julia script " + get_path() + " is not a module");
+
+	jl_function_t *julia_new_maybe = jl_get_function((jl_module_t *)julia_module_maybe, "new");
+	ERR_FAIL_NULL_V_MSG(julia_new_maybe, FAILED, "Julia script " + get_path() + " module does not a have a 'new' function");
+
+	jl_function_t *hasmethod = jl_get_function(jl_base_module, "hasmethod");
+	ERR_FAIL_COND_V_MSG(jl_call2(hasmethod, julia_new_maybe, jl_emptytuple) != jl_true, FAILED, "Julia script " + get_path() + " module's 'new' function does not have a new() method");
 
 	valid = true;
 	julia_module = (jl_module_t *)julia_module_maybe;
+	julia_new = julia_new_maybe;
+
+	// Rooting to protect from the garbage collector.
+	jl_binding_t *b_module = jl_get_binding_wr(jl_main_module, julia_module->name, 1);
+	jl_checked_assignment(b_module, (jl_value_t *)julia_module);
+
+	jl_binding_t *b_instances = jl_get_binding_wr(julia_module, jl_symbol("#GODOT_INSTANCES#"), 1);
+	julia_instances = jl_eval_string("IdDict()");
+	jl_checked_assignment(b_instances, julia_instances);
+
 	// TODO: Update script class info.
 
 	return OK;

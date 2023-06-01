@@ -3,6 +3,8 @@
 
 #include "core/object/script_language.h"
 
+#include <julia.h>
+
 class JuliaScript;
 
 class JuliaScriptInstance : ScriptInstance {
@@ -10,6 +12,7 @@ class JuliaScriptInstance : ScriptInstance {
 
 	Object *owner = nullptr;
 	Ref<JuliaScript> script;
+	jl_value_t *julia_instance;
 
 public:
 	bool set(const StringName &p_name, const Variant &p_value) override;

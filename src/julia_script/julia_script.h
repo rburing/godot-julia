@@ -7,14 +7,20 @@
 
 #include <julia.h>
 
+class JuliaScriptInstance;
+
 class JuliaScript : public Script {
 	GDCLASS(JuliaScript, Script);
+
+	friend class JuliaScriptInstance;
 
 	String source_code;
 	bool valid = false;
 	bool tool = false;
 
 	jl_module_t *julia_module = nullptr;
+	jl_function_t *julia_new = nullptr;
+	jl_value_t *julia_instances = nullptr;
 
 protected:
 	void _notification(int p_what);
