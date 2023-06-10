@@ -1,6 +1,6 @@
 The MIT License (MIT)
 
-godot-julia-script
+godot-julia
 Copyright (c) 2023 Ricardo Buring
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
