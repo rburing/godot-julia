@@ -1,8 +1,11 @@
+#!/usr/bin/env python
+
 Import("env")
+Import("env_modules")
 
 # Compilation
 julia_include = env["julia_include"]
-env_julia = env.Clone()
+env_julia = env_modules.Clone()
 env_julia.Append(CPPPATH=[julia_include])
 env_julia.add_source_files(env.modules_sources, "*.cpp")
 
@@ -15,3 +18,6 @@ env.Append(
         '-Wl,-rpath,"' + julia_lib + '"',
     ]
 )
+
+if env.editor_build:
+    env_julia.add_source_files(env.modules_sources, "editor/*.cpp")
