@@ -28,6 +28,7 @@ def get_opts(platform):
 def get_doc_classes():
     return [
         "JuliaScript",
+        "JuliaBindingsGenerator",
     ]
 
 

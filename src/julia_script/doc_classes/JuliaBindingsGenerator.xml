@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="JuliaBindingsGenerator" inherits="MainLoop" version="4.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		The bindings generator for the Julia language.
+	</brief_description>
+	<description>
+		Running this main loop will generate and install the Julia package Godot.jl.
+	</description>
+	<tutorials>
+	</tutorials>
+</class>

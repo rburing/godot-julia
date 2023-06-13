@@ -2,9 +2,14 @@
 
 #include "core/config/engine.h"
 #include "core/object/class_db.h"
+#include "core/typedefs.h" // for DEBUG_METHODS_ENABLED
 
 #include "julia_language.h"
 #include "julia_script.h"
+
+#if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
+#include "editor/julia_bindings_generator.h"
+#endif
 
 #include <julia.h>
 
@@ -20,6 +25,9 @@ void initialize_julia_script_module(ModuleInitializationLevel p_level) {
 	jl_init();
 
 	GDREGISTER_CLASS(JuliaScript);
+#if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
+	GDREGISTER_CLASS(JuliaBindingsGenerator);
+#endif
 
 	script_language_jl = memnew(JuliaLanguage);
 	ScriptServer::register_language(script_language_jl);
