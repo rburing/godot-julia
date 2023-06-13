@@ -19,7 +19,6 @@ void initialize_julia_script_module(ModuleInitializationLevel p_level) {
 
 	jl_init();
 
-	GDREGISTER_CLASS(JuliaLanguage);
 	GDREGISTER_CLASS(JuliaScript);
 
 	script_language_jl = memnew(JuliaLanguage);

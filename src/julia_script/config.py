@@ -23,3 +23,13 @@ def get_opts(platform):
             PathVariable.PathIsDir,
         ),
     ]
+
+
+def get_doc_classes():
+    return [
+        "JuliaScript",
+    ]
+
+
+def get_doc_path():
+    return "doc_classes"

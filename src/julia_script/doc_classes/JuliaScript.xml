@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="JuliaScript" inherits="Script" version="4.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		A script implemented in the Julia language.
+	</brief_description>
+	<description>
+		This class represents a Julia script. It is the Julia equivalent of the [GDScript] class.
+	</description>
+	<tutorials>
+	</tutorials>
+</class>
