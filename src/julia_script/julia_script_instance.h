@@ -10,8 +10,8 @@ class JuliaScript;
 class JuliaScriptInstance : ScriptInstance {
 	friend class JuliaScript;
 
-	Object *owner = nullptr;
 	Ref<JuliaScript> script;
+	Object *owner = nullptr;
 	jl_value_t *julia_instance;
 
 public:
@@ -52,7 +52,7 @@ public:
 
 	ScriptLanguage *get_language() override;
 
-	JuliaScriptInstance(const Ref<JuliaScript> &p_script);
+	JuliaScriptInstance(const Ref<JuliaScript> &p_script, Object *p_owner);
 	virtual ~JuliaScriptInstance() {}
 };
 

@@ -43,6 +43,7 @@ Variant JuliaScriptInstance::callp(const StringName &p_method, const Variant **p
 		r_error.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();
 	}
+
 	// Put arguments on the stack and call the function.
 	jl_value_t **args = (jl_value_t **)alloca(sizeof(jl_value_t *) * (p_argcount + 1));
 	JL_GC_PUSHARGS(args, p_argcount + 1);
@@ -52,6 +53,15 @@ Variant JuliaScriptInstance::callp(const StringName &p_method, const Variant **p
 	}
 	jl_value_t *julia_ret = jl_call(function, args, p_argcount + 1);
 	JL_GC_POP();
+
+	if (jl_exception_occurred()) {
+		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary.
+		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
+				jl_get_function(jl_base_module, "showerror"),
+				jl_exception_occurred());
+		ERR_FAIL_V_MSG(Variant(), "Julia method " + p_method + " in " + script->get_path() + " throws an exception: " + jl_string_ptr(exception_str));
+	}
+
 	return variant_from_julia_value(julia_ret);
 }
 
@@ -84,19 +94,21 @@ ScriptLanguage *JuliaScriptInstance::get_language() {
 	return JuliaLanguage::get_singleton();
 }
 
-JuliaScriptInstance::JuliaScriptInstance(const Ref<JuliaScript> &p_script) :
-		script(p_script) {
-	julia_instance = jl_call0(p_script->julia_new);
+JuliaScriptInstance::JuliaScriptInstance(const Ref<JuliaScript> &p_script, Object *p_owner) :
+		script(p_script), owner(p_owner) {
+	jl_value_t *base_obj = jl_new_struct((jl_datatype_t *)p_script->julia_new_param_type,
+			jl_box_voidpointer((void *)owner));
+	julia_instance = jl_call1(script->julia_new, base_obj);
 	if (jl_exception_occurred()) {
 		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary.
 		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
 				jl_get_function(jl_base_module, "showerror"),
 				jl_exception_occurred());
-		ERR_FAIL_MSG("Julia script " + p_script->get_path() + " module's new() method throws an exception: " + jl_string_ptr(exception_str));
+		ERR_FAIL_MSG("Julia script " + script->get_path() + " module's new() method throws an exception: " + jl_string_ptr(exception_str));
 		// This invalid JuliaScriptInstance will be deleted in JuliaScript::instance_create.
 	}
 
 	// Rooting to protect from the garbage collector.
-	jl_function_t *setindex = jl_get_function(p_script->julia_module, "setindex!");
-	jl_call3(setindex, p_script->julia_instances, julia_instance, julia_instance);
+	jl_function_t *setindex = jl_get_function(script->julia_module, "setindex!");
+	jl_call3(setindex, script->julia_instances, julia_instance, julia_instance);
 }

@@ -3,21 +3,42 @@
 Import("env")
 Import("env_modules")
 
-# Compilation
-julia_include = env["julia_include"]
 env_julia = env_modules.Clone()
-env_julia.Append(CPPPATH=[julia_include])
-env_julia.add_source_files(env.modules_sources, "*.cpp")
 
-# Linking
+# Add the path to julia.h as an include directory.
+julia_include = env["julia_include"]
+env_julia.Append(CPPPATH=[julia_include])
+
+# Position-independent code is required for a shared library.
+env_julia.Append(CCFLAGS=['-fPIC'])
+
+# Don't inject Godot's dependencies into our shared library.
+env_julia['LIBS'] = []
+
+# Collect all source files.
+module_sources = []
+module_sources += env_julia.Glob("*.cpp")
+module_sources += env_julia.Glob("glue/*.cpp")
+if env.editor_build:
+    module_sources += env_julia.Glob("editor/*.cpp")
+
+# Define the shared library; build it next to the Godot binary.
+shared_lib = env_julia.SharedLibrary(target='#bin/julia_script', source=module_sources)
+
+# Tell the linker where to find the Julia library and our own shared library.
 julia_lib = env["julia_lib"]
-env.Append(LIBPATH=[julia_lib])
-env.Append(LIBS=["julia"])
+env.Append(LIBPATH=[julia_lib, '#bin/'])
+
+# SCons wants the name of the library with its custom suffixes but without the final ".so".
+shared_lib_shim = shared_lib[0].name.rsplit('.', 1)[0]
+env.Append(LIBS=["julia", shared_lib_shim])
+
+# Allow the Godot binary to find the shared libraries more easily, without setting LD_LIBRARY_PATH etc.
 env.Append(
     LINKFLAGS=[
         '-Wl,-rpath,"' + julia_lib + '"',
+        '-Wl,-rpath,"' + Dir('#bin').srcnode().abspath + '"',
     ]
 )
 
-if env.editor_build:
-    env_julia.add_source_files(env.modules_sources, "editor/*.cpp")
+env.Depends(env.modules_sources, shared_lib)

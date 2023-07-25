@@ -56,6 +56,192 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	}
 }
 
+void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output) {
+	p_output.append(vformat("abstract type Godot%s", p_godot_type.julia_name));
+	if (p_godot_type.parent_class_name != StringName()) {
+		p_output.append(vformat(" <: Godot%s", object_types[p_godot_type.parent_class_name].julia_name));
+	}
+	p_output.append(" end\n\n");
+	p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n", fix_doc_description(p_godot_type.class_doc->brief_description), fix_doc_description(p_godot_type.class_doc->description)));
+	p_output.append(vformat("struct %s <: Godot%s\n", p_godot_type.julia_name, p_godot_type.julia_name));
+	p_output.append("\tnative_ptr::Ptr{Nothing}\n");
+	p_output.append("end\n\n");
+
+	// TODO: Handle singletons.
+
+	// TODO: Constants.
+
+	// TODO: Enums.
+
+	// TODO: Properties.
+
+	// Methods.
+
+	for (const GodotMethod &godot_method : p_godot_type.methods) {
+		_generate_julia_method(p_godot_type, godot_method, p_output);
+	}
+
+	// TODO: Signals.
+}
+
+void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output) {
+	// TODO: Return type.
+
+	// TODO: Arguments.
+
+	// TODO: Cache StringNames.
+	p_output.append(vformat("function %s(self::Godot%s)\n", p_godot_method.julia_name, p_godot_type.julia_name));
+	p_output.append(vformat("\tclass_name_char = transcode(UInt16, \"%s\\0\")\n", p_godot_type.name));
+	p_output.append("\tclass_name_string = GodotString(C_NULL)\n");
+	p_output.append("\t@ccall godot_julia_string_new_from_utf16_chars(class_name_string::Ref{GodotString}, class_name_char::Ref{UInt16})::Cvoid\n");
+	p_output.append("\tclass_name_string_name = GodotStringName(C_NULL)\n");
+	p_output.append("\t@ccall godot_julia_string_name_new_from_string(class_name_string_name::Ref{GodotStringName}, class_name_string::Ref{GodotString})::Cvoid\n");
+	p_output.append(vformat("\tmethod_name_char = transcode(UInt16, \"%s\\0\")\n", p_godot_method.name));
+	p_output.append("\tmethod_name_string = GodotString(C_NULL)\n");
+	p_output.append("\t@ccall godot_julia_string_new_from_utf16_chars(method_name_string::Ref{GodotString}, method_name_char::Ref{UInt16})::Cvoid\n");
+	p_output.append("\tmethod_name_string_name = GodotStringName(C_NULL)\n");
+	p_output.append("\t@ccall godot_julia_string_name_new_from_string(method_name_string_name::Ref{GodotStringName}, method_name_string::Ref{GodotString})::Cvoid\n");
+	p_output.append("\tmethod_bind = @ccall godot_julia_get_method_bind(class_name_string_name::Ref{GodotStringName}, method_name_string_name::Ref{GodotStringName})::Ptr{Nothing}\n");
+	p_output.append("\tret = GodotVariant((0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0))\n");
+	p_output.append("\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, ret::Ref{GodotVariant})::Cvoid\n");
+	p_output.append("end\n\n");
+
+	// TODO: Clean up strings.
+}
+
+void BindingsGenerator::_populate_object_types() {
+	object_types.clear();
+
+	// Breadth-first search from Object.
+	List<StringName> class_list;
+	class_list.push_front("Object");
+
+	while (class_list.size() > 0) {
+		StringName class_name = class_list.front()->get();
+
+		List<StringName> inheriters;
+		ClassDB::get_direct_inheriters_from_class(class_name, &inheriters);
+		for (StringName &inheriter : inheriters) {
+			class_list.push_back(inheriter);
+		}
+
+		ClassDB::APIType api_type = ClassDB::get_api_type(class_name);
+
+		if (api_type == ClassDB::API_NONE) {
+			class_list.pop_front();
+			continue;
+		}
+
+		if (!ClassDB::is_class_exposed(class_name)) {
+			_log("Ignoring type '%s' because it's not exposed\n", String(class_name).utf8().get_data());
+			class_list.pop_front();
+			continue;
+		}
+
+		if (!ClassDB::is_class_enabled(class_name)) {
+			_log("Ignoring type '%s' because it's not enabled\n", String(class_name).utf8().get_data());
+			class_list.pop_front();
+			continue;
+		}
+
+		ClassDB::ClassInfo *class_info = ClassDB::classes.getptr(class_name);
+
+		GodotType godot_class;
+		godot_class.name = class_name;
+		godot_class.julia_name = class_name;
+		godot_class.is_object_type = true;
+		godot_class.is_singleton = Engine::get_singleton()->has_singleton(class_name);
+		godot_class.is_instantiable = class_info->creation_func && !godot_class.is_singleton;
+		godot_class.is_ref_counted = ClassDB::is_parent_class(class_name, "RefCounted");
+		godot_class.parent_class_name = ClassDB::get_parent_class(class_name);
+
+		String doc_name = String(godot_class.name).begins_with("_") ? String(godot_class.name).substr(1) : String(godot_class.name);
+		godot_class.class_doc = &EditorHelp::get_doc_data()->class_list[doc_name];
+
+		// TODO: Properties.
+
+		// TODO: Virtual methods.
+
+		// Populate methods.
+
+		List<MethodInfo> method_list;
+		ClassDB::get_method_list(class_name, &method_list, true);
+		method_list.sort();
+
+		for (const MethodInfo &method_info : method_list) {
+			int argc = method_info.arguments.size();
+
+			// TODO: Handle arguments.
+			if (argc != 0) {
+				continue;
+			}
+
+			if (method_info.name.is_empty()) {
+				continue;
+			}
+
+			GodotMethod godot_method;
+			godot_method.name = method_info.name;
+			godot_method.julia_name = method_info.name;
+
+			if (method_info.flags & METHOD_FLAG_STATIC) {
+				godot_method.is_static = true;
+			}
+
+			// TODO: Handle static methods.
+			if (godot_method.is_static) {
+				continue;
+			}
+
+			if (method_info.flags & METHOD_FLAG_VIRTUAL) {
+				godot_method.is_virtual = true;
+			}
+
+			// TODO: Handle virtual methods.
+			if (godot_method.is_virtual) {
+				continue;
+			}
+
+			PropertyInfo return_info = method_info.return_val;
+
+			// TODO: Handle return types.
+			if (return_info.type != Variant::NIL) {
+				continue;
+			}
+
+			MethodBind *method_bind = godot_method.is_virtual ? nullptr : ClassDB::get_method(class_name, method_info.name);
+
+			godot_method.is_vararg = method_bind && method_bind->is_vararg();
+
+			// TODO: Handle vararg methods.
+			if (godot_method.is_vararg) {
+				continue;
+			}
+
+			// TODO: Handle arguments.
+
+			if (godot_class.class_doc) {
+				for (int i = 0; i < godot_class.class_doc->methods.size(); i++) {
+					if (godot_class.class_doc->methods[i].name == godot_method.name) {
+						godot_method.method_doc = &godot_class.class_doc->methods[i];
+						break;
+					}
+				}
+			}
+
+			godot_class.methods.push_back(godot_method);
+		}
+
+		// TODO: Signals.
+
+		// TODO: Enums and constants.
+
+		object_types.insert(godot_class.name, godot_class);
+
+		class_list.pop_front();
+	}
+}
+
 void BindingsGenerator::_populate_global_constants() {
 	HashMap<String, DocData::ClassDoc>::Iterator match = EditorHelp::get_doc_data()->class_list.find("@GlobalScope");
 
@@ -118,6 +304,7 @@ void BindingsGenerator::_initialize() {
 	initialized = false;
 	EditorHelp::generate_doc(false);
 	_populate_global_constants();
+	_populate_object_types();
 	initialized = true;
 }
 
@@ -156,12 +343,41 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 		}
 	}
 
+	// Generate source files for object types.
+	for (const KeyValue<StringName, GodotType> &E : object_types) {
+		const GodotType &godot_type = E.value;
+
+		if (godot_type.api_type == ClassDB::API_EDITOR) {
+			continue;
+		}
+
+		StringBuilder object_type_source;
+		_generate_julia_type(godot_type, object_type_source);
+		String output_file = p_module_dir.path_join(godot_type.julia_name + ".jl");
+		Error save_err = _save_file(output_file, object_type_source);
+		if (save_err != OK) {
+			return save_err;
+		}
+	}
+
 	// Generate top-level module file.
 	{
 		StringBuilder module_source;
 		module_source.append("module Godot\n\n");
 		module_source.append("include(\"constants.jl\");\n\n");
-		module_source.append("end # module\n");
+
+		// TODO: Separate this.
+		module_source.append("mutable struct GodotString\n\tcowdata::Ptr{Char}\nend\n\n");
+		module_source.append("mutable struct GodotStringName\n\tdata::Ptr{Nothing}\nend\n\n");
+
+		// TODO: Avoid this.
+		module_source.append("mutable struct GodotVariant\n\tidk::NTuple{20, UInt8} # assuming real_t is float\nend\n\n");
+
+		for (const KeyValue<StringName, GodotType> &E : object_types) {
+			module_source.append(vformat("include(\"%s.jl\");\n", E.value.julia_name));
+		}
+
+		module_source.append("\nend # module\n");
 		String output_file = p_module_dir.path_join("Godot.jl");
 		Error save_err = _save_file(output_file, module_source);
 		if (save_err != OK) {

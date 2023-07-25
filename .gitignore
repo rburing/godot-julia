@@ -1,5 +1,6 @@
 # Binaries
 *.o
+*.os
 
 # Python
 __pycache__/

@@ -9,6 +9,7 @@
 #include "core/os/main_loop.h"
 #include "core/string/string_builder.h"
 #include "core/string/ustring.h"
+#include "core/templates/hash_map.h"
 #include "core/templates/list.h"
 
 #define JULIA_PKG_NAME "Godot.jl"
@@ -46,15 +47,54 @@ class BindingsGenerator {
 		}
 	};
 
+	struct GodotMethod {
+		StringName name;
+		String julia_name;
+
+		bool is_static = false;
+		bool is_virtual = false;
+		bool is_vararg = false;
+
+		// TODO: Return type.
+		// TODO: Arguments.
+
+		const DocData::MethodDoc *method_doc = nullptr;
+
+		GodotMethod() {}
+	};
+
+	struct GodotType {
+		StringName name;
+		String julia_name;
+
+		bool is_object_type = false;
+		bool is_singleton = false;
+		bool is_instantiable = false;
+		bool is_ref_counted = false;
+
+		StringName parent_class_name;
+		ClassDB::APIType api_type = ClassDB::API_NONE;
+
+		const DocData::ClassDoc *class_doc = nullptr;
+
+		List<GodotMethod> methods;
+
+		GodotType() {}
+	};
+
 	bool initialized = false;
 	bool log_print_enabled = false;
 
 	List<GodotEnum> global_enums;
 	List<GodotConstant> global_constants;
+	HashMap<StringName, GodotType> object_types;
 
 	void _populate_global_constants();
+	void _populate_object_types();
 
 	void _generate_global_constants(StringBuilder &p_output);
+	void _generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output);
+	void _generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output);
 
 	template <typename... VarArgs>
 	void _log(String p_format, const VarArgs... p_args);

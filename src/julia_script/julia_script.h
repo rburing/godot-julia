@@ -20,6 +20,7 @@ class JuliaScript : public Script {
 
 	jl_module_t *julia_module = nullptr;
 	jl_function_t *julia_new = nullptr;
+	jl_datatype_t *julia_new_param_type = nullptr;
 	jl_value_t *julia_instances = nullptr;
 
 protected:

@@ -62,7 +62,7 @@ ScriptInstance *JuliaScript::instance_create(Object *p_this) {
 	CRASH_COND(!valid);
 #endif
 
-	JuliaScriptInstance *instance = memnew(JuliaScriptInstance(Ref<JuliaScript>(this)));
+	JuliaScriptInstance *instance = memnew(JuliaScriptInstance(Ref<JuliaScript>(this), p_this));
 	if (!instance->julia_instance) {
 		memdelete(instance);
 		// At this point an error message was already printed in the JuliaScriptInstance constructor.
@@ -71,8 +71,8 @@ ScriptInstance *JuliaScript::instance_create(Object *p_this) {
 
 	// TODO: Check inheritance.
 
-	instance->owner = p_this;
 	instance->owner->set_script_instance(instance);
+
 	return instance;
 }
 
@@ -113,12 +113,25 @@ Error JuliaScript::reload(bool p_keep_state) {
 	jl_function_t *julia_new_maybe = jl_get_function((jl_module_t *)julia_module_maybe, "new");
 	ERR_FAIL_NULL_V_MSG(julia_new_maybe, FAILED, "Julia script " + get_path() + " module does not a have a 'new' function");
 
-	jl_function_t *hasmethod = jl_get_function(jl_base_module, "hasmethod");
-	ERR_FAIL_COND_V_MSG(jl_call2(hasmethod, julia_new_maybe, jl_emptytuple) != jl_true, FAILED, "Julia script " + get_path() + " module's 'new' function does not have a new() method");
+	jl_function_t *methods = jl_get_function(jl_base_module, "methods");
+	jl_value_t *julia_new_methods = jl_call1(methods, julia_new_maybe);
+	jl_function_t *length = jl_get_function(jl_base_module, "length");
+	jl_value_t *julia_new_methods_count = jl_call1(length, julia_new_methods);
+	ERR_FAIL_COND_V_MSG(jl_unbox_int64(julia_new_methods_count) != 1, FAILED, "Julia script " + get_path() + " module's 'new' function should have exactly one method definition");
+
+	jl_function_t *getindex = jl_get_function(jl_base_module, "getindex");
+	jl_value_t *julia_new_method = jl_call2(getindex, julia_new_methods, jl_box_int64(1));
+	jl_value_t *julia_new_signature = jl_get_field(julia_new_method, "sig");
+	jl_value_t *julia_new_parameters = jl_get_field(julia_new_signature, "parameters");
+	ERR_FAIL_COND_V_MSG(jl_svec_len(julia_new_parameters) != 2, FAILED, "Julia script " + get_path() + " module's 'new' method should take exactly one argument");
+
+	jl_value_t *julia_new_param_type_maybe = jl_svec_data(julia_new_parameters)[1];
+	ERR_FAIL_COND_V_MSG(!jl_is_structtype(julia_new_param_type_maybe), FAILED, "Julia script " + get_path() + " module's 'new' method should take a struct type as its argument");
 
 	valid = true;
 	julia_module = (jl_module_t *)julia_module_maybe;
 	julia_new = julia_new_maybe;
+	julia_new_param_type = (jl_datatype_t *)julia_new_param_type_maybe;
 
 	// Rooting to protect from the garbage collector.
 	jl_binding_t *b_module = jl_get_binding_wr(jl_main_module, julia_module->name, 1);
