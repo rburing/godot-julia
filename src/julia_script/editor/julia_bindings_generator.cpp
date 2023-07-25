@@ -56,6 +56,44 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	}
 }
 
+void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
+	p_output.append("mutable struct StringName\n");
+	p_output.append("\tdata::Ptr{Nothing}\n");
+	p_output.append("\tfunction StringName(string::String)\n");
+	p_output.append("\t\tchars = transcode(UInt16, string * '\\0')\n");
+	p_output.append("\t\tstring = GodotString(C_NULL)\n");
+	p_output.append("\t\t@ccall godot_julia_string_new_from_utf16_chars(string::Ref{GodotString}, chars::Ref{UInt16})::Cvoid\n");
+	p_output.append("\t\tdestroy_string(s) = @ccall godot_julia_string_destroy(s::Ref{GodotString})::Cvoid\n");
+	p_output.append("\t\tfinalizer(destroy_string, string)\n");
+	p_output.append("\t\tstring_name = new(C_NULL)\n");
+	p_output.append("\t\t@ccall godot_julia_string_name_new_from_string(string_name::Ref{StringName}, string::Ref{GodotString})::Cvoid\n");
+	p_output.append("\t\tdestroy_string_name(s) = @ccall godot_julia_string_name_destroy(s::Ref{StringName})::Cvoid\n");
+	p_output.append("\t\tfinalizer(destroy_string_name, string_name)\n");
+	p_output.append("\tend\n");
+	p_output.append("end\n\n");
+
+	HashSet<StringName> string_names;
+	for (const KeyValue<StringName, GodotType> &E : object_types) {
+		string_names.insert(E.value.name);
+		for (const GodotMethod &godot_method : E.value.methods) {
+			string_names.insert(godot_method.name);
+		}
+	}
+	p_output.append("mutable struct StringNames\n");
+	for (const StringName &string_name : string_names) {
+		p_output.append(vformat("\t%s::StringName\n", string_name));
+	}
+	p_output.append("\tStringNames() = new()\n");
+	p_output.append("end\n\n");
+	p_output.append("string_names = StringNames()\n\n");
+
+	p_output.append("function initialize_string_names()\n");
+	for (const StringName &string_name : string_names) {
+		p_output.append(vformat("\tstring_names.%s = StringName(\"%s\")\n", string_name, string_name));
+	}
+	p_output.append("end\n\n");
+}
+
 void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output) {
 	p_output.append(vformat("abstract type Godot%s", p_godot_type.julia_name));
 	if (p_godot_type.parent_class_name != StringName()) {
@@ -89,19 +127,8 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 
 	// TODO: Arguments.
 
-	// TODO: Cache StringNames.
 	p_output.append(vformat("function %s(self::Godot%s)\n", p_godot_method.julia_name, p_godot_type.julia_name));
-	p_output.append(vformat("\tclass_name_char = transcode(UInt16, \"%s\\0\")\n", p_godot_type.name));
-	p_output.append("\tclass_name_string = GodotString(C_NULL)\n");
-	p_output.append("\t@ccall godot_julia_string_new_from_utf16_chars(class_name_string::Ref{GodotString}, class_name_char::Ref{UInt16})::Cvoid\n");
-	p_output.append("\tclass_name_string_name = GodotStringName(C_NULL)\n");
-	p_output.append("\t@ccall godot_julia_string_name_new_from_string(class_name_string_name::Ref{GodotStringName}, class_name_string::Ref{GodotString})::Cvoid\n");
-	p_output.append(vformat("\tmethod_name_char = transcode(UInt16, \"%s\\0\")\n", p_godot_method.name));
-	p_output.append("\tmethod_name_string = GodotString(C_NULL)\n");
-	p_output.append("\t@ccall godot_julia_string_new_from_utf16_chars(method_name_string::Ref{GodotString}, method_name_char::Ref{UInt16})::Cvoid\n");
-	p_output.append("\tmethod_name_string_name = GodotStringName(C_NULL)\n");
-	p_output.append("\t@ccall godot_julia_string_name_new_from_string(method_name_string_name::Ref{GodotStringName}, method_name_string::Ref{GodotString})::Cvoid\n");
-	p_output.append("\tmethod_bind = @ccall godot_julia_get_method_bind(class_name_string_name::Ref{GodotStringName}, method_name_string_name::Ref{GodotStringName})::Ptr{Nothing}\n");
+	p_output.append(vformat("\tmethod_bind = @ccall godot_julia_get_method_bind(string_names.%s::Ref{StringName}, string_names.%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
 	p_output.append("\tret = GodotVariant((0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0))\n");
 	p_output.append("\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, ret::Ref{GodotVariant})::Cvoid\n");
 	p_output.append("end\n\n");
@@ -343,6 +370,17 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 		}
 	}
 
+	// Generate source file for string names.
+	{
+		StringBuilder strings_source;
+		_generate_string_names(strings_source);
+		String output_file = p_module_dir.path_join("StringName.jl");
+		Error save_err = _save_file(output_file, strings_source);
+		if (save_err != OK) {
+			return save_err;
+		}
+	}
+
 	// Generate source files for object types.
 	for (const KeyValue<StringName, GodotType> &E : object_types) {
 		const GodotType &godot_type = E.value;
@@ -368,7 +406,8 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 
 		// TODO: Separate this.
 		module_source.append("mutable struct GodotString\n\tcowdata::Ptr{Char}\nend\n\n");
-		module_source.append("mutable struct GodotStringName\n\tdata::Ptr{Nothing}\nend\n\n");
+
+		module_source.append("include(\"StringName.jl\");\n\n");
 
 		// TODO: Avoid this.
 		module_source.append("mutable struct GodotVariant\n\tidk::NTuple{20, UInt8} # assuming real_t is float\nend\n\n");

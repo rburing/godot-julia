@@ -24,6 +24,9 @@ void initialize_julia_script_module(ModuleInitializationLevel p_level) {
 
 	jl_init();
 
+	jl_eval_string("using Godot");
+	jl_eval_string("Godot.initialize_string_names()");
+
 	GDREGISTER_CLASS(JuliaScript);
 #if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
 	GDREGISTER_CLASS(JuliaBindingsGenerator);
