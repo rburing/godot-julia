@@ -53,7 +53,7 @@ public:
 	ScriptLanguage *get_language() override;
 
 	JuliaScriptInstance(const Ref<JuliaScript> &p_script, Object *p_owner);
-	virtual ~JuliaScriptInstance() {}
+	virtual ~JuliaScriptInstance();
 };
 
 #endif // JULIA_SCRIPT_INSTANCE_H

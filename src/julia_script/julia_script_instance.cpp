@@ -109,6 +109,12 @@ JuliaScriptInstance::JuliaScriptInstance(const Ref<JuliaScript> &p_script, Objec
 	}
 
 	// Rooting to protect from the garbage collector.
-	jl_function_t *setindex = jl_get_function(script->julia_module, "setindex!");
+	jl_function_t *setindex = jl_get_function(jl_base_module, "setindex!");
 	jl_call3(setindex, script->julia_instances, julia_instance, julia_instance);
+}
+
+JuliaScriptInstance::~JuliaScriptInstance() {
+	// Unrooting to release to the garbage collector.
+	jl_function_t *delete_shriek = jl_get_function(jl_base_module, "delete!");
+	jl_call2(delete_shriek, script->julia_instances, julia_instance);
 }
