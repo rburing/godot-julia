@@ -47,6 +47,18 @@ class BindingsGenerator {
 		}
 	};
 
+	struct TypeReference {
+		StringName name;
+		bool is_enum = false;
+		List<TypeReference> generic_type_parameters;
+
+		TypeReference() {}
+
+		TypeReference(const StringName &p_name) {
+			name = p_name;
+		}
+	};
+
 	struct GodotMethod {
 		StringName name;
 		String julia_name;
@@ -55,7 +67,8 @@ class BindingsGenerator {
 		bool is_virtual = false;
 		bool is_vararg = false;
 
-		// TODO: Return type.
+		TypeReference return_type;
+
 		// TODO: Arguments.
 
 		const DocData::MethodDoc *method_doc = nullptr;
@@ -67,10 +80,18 @@ class BindingsGenerator {
 		StringName name;
 		String julia_name;
 
+		bool is_enum = false;
 		bool is_object_type = false;
 		bool is_singleton = false;
 		bool is_instantiable = false;
 		bool is_ref_counted = false;
+
+		// The reference type for the return value passed into ptrcall.
+		String julia_return_type;
+		// The format string for the initial value passed into ptrcall.
+		String julia_return_initial;
+		// The format string to obtain the final return value from the ptrcall return value.
+		String julia_return_output;
 
 		StringName parent_class_name;
 		ClassDB::APIType api_type = ClassDB::API_NONE;
@@ -87,13 +108,20 @@ class BindingsGenerator {
 
 	List<GodotEnum> global_enums;
 	List<GodotConstant> global_constants;
+
+	HashMap<StringName, GodotType> builtin_types;
+	HashMap<StringName, GodotType> enum_types;
 	HashMap<StringName, GodotType> object_types;
 
 	void _populate_global_constants();
+	void _populate_builtin_types();
 	void _populate_object_types();
+
+	const GodotType *_get_type_or_null(const TypeReference &p_typeref);
 
 	void _generate_global_constants(StringBuilder &p_output);
 	void _generate_string_names(StringBuilder &p_output);
+	void _generate_variant(StringBuilder &p_output);
 	void _generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output);
 	void _generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output);
 
