@@ -7,3 +7,6 @@ __pycache__/
 
 # Editor
 .vscode/
+
+# Generated
+src/julia_script/glue/Godot.jl/
