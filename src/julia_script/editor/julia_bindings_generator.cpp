@@ -27,6 +27,7 @@ static String fix_doc_description(const String &p_bbcode) {
 			.replace("\r", "")
 			.replace("Variant.Type", "VariantType")
 			.replace("Variant.Operator", "VariantOperator")
+			.replace("\"\"\"", "\\\"\\\"\\\"")
 			.strip_edges();
 }
 
