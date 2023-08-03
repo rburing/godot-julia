@@ -149,6 +149,7 @@ public:
 	Error generate_julia_module(const String &p_module_dir);
 	Error generate_julia_package(const String &p_package_dir);
 	Error install_julia_package(const String &p_package_dir);
+	void precompile_julia_package();
 
 	_FORCE_INLINE_ bool is_log_print_enabled() { return log_print_enabled; }
 	_FORCE_INLINE_ void set_log_print_enabled(bool p_enabled) { log_print_enabled = p_enabled; }

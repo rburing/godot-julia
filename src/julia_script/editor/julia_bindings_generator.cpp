@@ -879,6 +879,10 @@ Error BindingsGenerator::install_julia_package(const String &p_package_dir) {
 	return OK;
 }
 
+void BindingsGenerator::precompile_julia_package() {
+	jl_eval_string("Pkg.precompile()");
+}
+
 void JuliaBindingsGenerator::initialize() {
 	List<String> cmdline_args = OS::get_singleton()->get_cmdline_user_args();
 
@@ -908,6 +912,8 @@ void JuliaBindingsGenerator::initialize() {
 		ERR_PRINT("Failed to install the Julia package.");
 		return;
 	}
+
+	bindings_generator.precompile_julia_package();
 }
 
 bool JuliaBindingsGenerator::process(double p_delta) {
