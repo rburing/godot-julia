@@ -11,6 +11,22 @@
 
 #include <julia.h>
 
+bool is_julia_keyword(String p_string) {
+	// The list of keywords is taken from https://docs.julialang.org/en/v1/base/base/#Keywords
+	return p_string == "baremodule" || p_string == "begin" || p_string == "break" || p_string == "catch" ||
+			p_string == "const" || p_string == "continue" || p_string == "do" || p_string == "else" ||
+			p_string == "elseif" || p_string == "end" || p_string == "export" || p_string == "false" ||
+			p_string == "finally" || p_string == "for" || p_string == "function" || p_string == "global" ||
+			p_string == "if" || p_string == "import" || p_string == "let" || p_string == "local" ||
+			p_string == "macro" || p_string == "module" || p_string == "quote" || p_string == "return" ||
+			p_string == "struct" || p_string == "true" || p_string == "try" || p_string == "using" ||
+			p_string == "while";
+}
+
+String escape_julia_keyword(String p_string) {
+	return is_julia_keyword(p_string) ? "_" + p_string : p_string;
+}
+
 static Error _save_file(const String &p_path, const StringBuilder &p_content) {
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_FILE_CANT_WRITE, "Cannot open file: '" + p_path + "'.");
@@ -87,6 +103,40 @@ static StringName _get_type_name_from_meta(Variant::Type p_type, GodotTypeInfo::
 	}
 }
 
+bool BindingsGenerator::_arg_default_value_from_variant(const Variant &p_val, BindingsGenerator::GodotArgument &r_arg) {
+	r_arg.default_value = p_val;
+	r_arg.julia_default_value = p_val.operator String();
+
+	switch (p_val.get_type()) {
+		// Either Object type or Variant.
+		case Variant::NIL:
+			r_arg.julia_default_value = "Variant()";
+			break;
+		// Atomic types.
+		case Variant::BOOL:
+			r_arg.julia_default_value = bool(p_val) ? "true" : "false";
+			break;
+		case Variant::INT:
+			if (r_arg.type.name != "int") {
+				r_arg.julia_default_value = vformat("%s(%s)", r_arg.type.name, r_arg.julia_default_value);
+			}
+			break;
+		case Variant::FLOAT:
+			if (r_arg.type.name == "float") {
+				r_arg.julia_default_value += "f0";
+			}
+			break;
+		// TODO: Handle more complex types.
+		default:
+			ERR_FAIL_V_MSG(false, "Unexpected Variant type in argument: " + itos(p_val.get_type()));
+			break;
+	}
+
+	// TODO: Handle nullable types.
+
+	return true;
+}
+
 void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	for (GodotEnum &genum : global_enums) {
 		Vector<GodotConstant> extraneous_constants;
@@ -138,7 +188,7 @@ void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
 	}
 	p_output.append("mutable struct StringNames\n");
 	for (const StringName &string_name : string_names) {
-		p_output.append(vformat("\t%s::StringName\n", string_name));
+		p_output.append(vformat("\t_%s::StringName\n", string_name));
 	}
 	p_output.append("\tStringNames() = new()\n");
 	p_output.append("end\n\n");
@@ -146,7 +196,7 @@ void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
 
 	p_output.append("function initialize_string_names()\n");
 	for (const StringName &string_name : string_names) {
-		p_output.append(vformat("\tstring_names.%s = StringName(\"%s\")\n", string_name, string_name));
+		p_output.append(vformat("\tstring_names._%s = StringName(\"%s\")\n", string_name, string_name));
 	}
 	p_output.append("end\n\n");
 }
@@ -195,29 +245,63 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 }
 
 void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output) {
-	// TODO: Arguments.
-
 	p_output.append("let\n");
 	p_output.append(vformat("\tglobal %s\n", p_godot_method.julia_name));
 	p_output.append("\tmethod_bind = C_NULL\n");
-	p_output.append(vformat("\tfunction %s(self::Godot%s)\n", p_godot_method.julia_name, p_godot_type.julia_name));
+	p_output.append(vformat("\tfunction %s(self::Godot%s", p_godot_method.julia_name, p_godot_type.julia_name));
+	int argc = p_godot_method.arguments.size();
+	for (int i = 0; i < argc; i++) {
+		const GodotType *argument_type = _get_type_or_null(p_godot_method.arguments[i].type);
+		// TODO: Handle argument_type == nullptr?
+		p_output.append(vformat(", %s::%s", p_godot_method.arguments[i].name, argument_type->julia_name));
+		if (!p_godot_method.arguments[i].julia_default_value.is_empty()) {
+			p_output.append(vformat(" = %s", p_godot_method.arguments[i].julia_default_value));
+		}
+	}
+	p_output.append(")\n");
 	p_output.append("\t\tif method_bind == C_NULL\n");
-	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(string_names.%s::Ref{StringName}, string_names.%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
+	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(string_names._%s::Ref{StringName}, string_names._%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
 	p_output.append("\t\tend\n");
+	String ret_ptrcall_typed;
+	const GodotType *return_type = nullptr;
 	if (p_godot_method.return_type.name == "Cvoid") {
-		p_output.append("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, C_NULL::Ptr{Nothing})::Cvoid\n");
+		ret_ptrcall_typed = "C_NULL::Ptr{Nothing}";
 	} else {
-		const GodotType *return_type = _get_type_or_null(p_godot_method.return_type);
+		return_type = _get_type_or_null(p_godot_method.return_type);
 		ERR_FAIL_NULL_MSG(return_type, vformat("Return type not found: %s", p_godot_method.return_type.name));
 
-		// TODO: Handle more return types.
+		p_output.append(vformat("\t\tret = %s\n", return_type->ptrcall_initial));
 
-		p_output.append(vformat("\t\tret = %s\n", return_type->julia_return_initial));
-		p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, ret::%s)::Cvoid\n", return_type->julia_return_type));
+		ret_ptrcall_typed = vformat("ret::%s", return_type->ptrcall_type);
+	}
+	// TODO: Handle more return types.
+
+	// Handle arguments.
+	String args_ptrcall_typed;
+	if (argc == 0) {
+		args_ptrcall_typed = "C_NULL::Ptr{Nothing}";
+	} else {
+		p_output.append("\t\targs = [");
+		for (int i = 0; i < argc; i++) {
+			const GodotType *arg_type = _get_type_or_null(p_godot_method.arguments[i].type);
+			p_output.append(vformat(arg_type->ptrcall_input, p_godot_method.arguments[i].name));
+			if (i != argc - 1) {
+				p_output.append(", ");
+			}
+		}
+		p_output.append("]\n");
+		args_ptrcall_typed = "args::Ref{Ptr{Nothing}}";
+	}
+	// TODO: Handle more complex argument types.
+
+	p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, %s, %s)::Cvoid\n", args_ptrcall_typed, ret_ptrcall_typed));
+
+	if (return_type != nullptr) {
 		p_output.append("\t\treturn ");
-		p_output.append(vformat(return_type->julia_return_output, "ret"));
+		p_output.append(vformat(return_type->ptrcall_output, "ret"));
 		p_output.append("\n");
 	}
+
 	p_output.append("\tend\nend\n\n");
 }
 
@@ -290,9 +374,10 @@ void BindingsGenerator::_populate_object_types() {
 		GodotType godot_class;
 		godot_class.name = class_name;
 		godot_class.julia_name = class_name;
-		godot_class.julia_return_type = "Ptr{Nothing}";
-		godot_class.julia_return_initial = "C_NULL";
-		godot_class.julia_return_output = vformat("%s(%%s)", class_name);
+		godot_class.ptrcall_type = "Ptr{Nothing}";
+		godot_class.ptrcall_initial = "C_NULL";
+		godot_class.ptrcall_input = "%s.native_ptr";
+		godot_class.ptrcall_output = vformat("%s(%%s)", class_name);
 		godot_class.is_object_type = true;
 		godot_class.is_singleton = Engine::get_singleton()->has_singleton(class_name);
 		godot_class.is_instantiable = class_info->creation_func && !godot_class.is_singleton;
@@ -315,8 +400,19 @@ void BindingsGenerator::_populate_object_types() {
 		for (const MethodInfo &method_info : method_list) {
 			int argc = method_info.arguments.size();
 
-			// TODO: Handle arguments.
-			if (argc != 0) {
+			// TODO: Handle more complex argument types.
+			bool arguments_supported = true;
+			for (int i = 0; i < argc; i++) {
+				Variant::Type argument_type = method_info.arguments[i].type;
+				if (!(argument_type == Variant::NIL ||
+							argument_type == Variant::BOOL ||
+							argument_type == Variant::INT ||
+							argument_type == Variant::FLOAT)) {
+					arguments_supported = false;
+					break;
+				}
+			}
+			if (!arguments_supported) {
 				continue;
 			}
 
@@ -326,7 +422,7 @@ void BindingsGenerator::_populate_object_types() {
 
 			GodotMethod godot_method;
 			godot_method.name = method_info.name;
-			godot_method.julia_name = method_info.name;
+			godot_method.julia_name = escape_julia_keyword(method_info.name);
 
 			if (method_info.flags & METHOD_FLAG_STATIC) {
 				godot_method.is_static = true;
@@ -367,8 +463,6 @@ void BindingsGenerator::_populate_object_types() {
 
 			// TODO: Handle Object.free special case.
 
-			// TODO: Handle arguments.
-
 			if (return_info.type == Variant::NIL && return_info.usage & PROPERTY_USAGE_NIL_IS_VARIANT) {
 				godot_method.return_type.name = "Variant";
 			} else if (return_info.type == Variant::NIL) {
@@ -381,6 +475,36 @@ void BindingsGenerator::_populate_object_types() {
 				godot_method.return_type.name = _get_type_name_from_meta(return_info.type, method_bind ? method_bind->get_argument_meta(-1) : (GodotTypeInfo::Metadata)method_info.return_val_metadata);
 			}
 			// TODO: Handle more complex return types.
+
+			// Handle arguments.
+			for (int i = 0; i < argc; i++) {
+				PropertyInfo arginfo = method_info.arguments[i];
+
+				String orig_arg_name = arginfo.name;
+
+				GodotArgument godot_arg;
+				godot_arg.name = orig_arg_name;
+
+				if (arginfo.type == Variant::INT && arginfo.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) {
+					godot_arg.type.name = arginfo.class_name;
+					godot_arg.type.is_enum = true;
+				} else if (arginfo.type == Variant::NIL) {
+					godot_arg.type.name = "Variant";
+				} else {
+					godot_arg.type.name = _get_type_name_from_meta(arginfo.type, method_bind ? method_bind->get_argument_meta(i) : (GodotTypeInfo::Metadata)method_info.get_argument_meta(i));
+				}
+				// TODO: Handle more complex argument types.
+
+				godot_arg.name = escape_julia_keyword(godot_arg.name);
+
+				if (method_bind && method_bind->has_default_argument(i)) {
+					bool defval_ok = _arg_default_value_from_variant(method_bind->get_default_argument(i), godot_arg);
+					ERR_FAIL_COND_MSG(!defval_ok,
+							"Cannot determine default value for argument '" + orig_arg_name + "' of method '" + godot_class.name + "." + godot_method.name + "'.");
+				}
+
+				godot_method.arguments.push_back(godot_arg);
+			}
 
 			if (godot_class.class_doc) {
 				for (int i = 0; i < godot_class.class_doc->methods.size(); i++) {
@@ -410,9 +534,10 @@ void BindingsGenerator::_populate_builtin_types() {
 	// bool
 	godot_type.name = "bool";
 	godot_type.julia_name = "Bool";
-	godot_type.julia_return_type = "Ref{Cint}";
-	godot_type.julia_return_initial = "Ref{Cint}(0)";
-	godot_type.julia_return_output = "Bool(%s[])";
+	godot_type.ptrcall_type = "Ref{Cint}";
+	godot_type.ptrcall_initial = "Ref{Cint}(0)";
+	godot_type.ptrcall_input = "Ref{Cint}(%s)";
+	godot_type.ptrcall_output = "Bool(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// NOTE: The expected type for all integer types in ptrcall is int64_t.
@@ -420,65 +545,73 @@ void BindingsGenerator::_populate_builtin_types() {
 	// sbyte
 	godot_type.name = "sbyte";
 	godot_type.julia_name = "Int8";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "Int8(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "Int8(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// short
 	godot_type.name = "short";
 	godot_type.julia_name = "Int16";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "Int16(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "Int16(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// int
 	godot_type.name = "int";
 	godot_type.julia_name = "Int32";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "Int32(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "Int32(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// long
 	godot_type.name = "long";
 	godot_type.julia_name = "Int64";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "%s[]";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "%s[]";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// byte
 	godot_type.name = "byte";
 	godot_type.julia_name = "UInt8";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "UInt8(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "UInt8(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// ushort
 	godot_type.name = "ushort";
 	godot_type.julia_name = "UInt16";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "UInt16(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "UInt16(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// uint
 	godot_type.name = "uint";
 	godot_type.julia_name = "UInt32";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "UInt32(%s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(%s)";
+	godot_type.ptrcall_output = "UInt32(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// ulong
 	godot_type.name = "ulong";
 	godot_type.julia_name = "UInt64";
-	godot_type.julia_return_type = "Ref{Int64}";
-	godot_type.julia_return_initial = "Ref{Int64}(0)";
-	godot_type.julia_return_output = "reinterpret(UInt64, %s[])";
+	godot_type.ptrcall_type = "Ref{Int64}";
+	godot_type.ptrcall_initial = "Ref{Int64}(0)";
+	godot_type.ptrcall_input = "Ref{Int64}(reinterpret(Int64, %s))";
+	godot_type.ptrcall_output = "reinterpret(UInt64, %s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// NOTE: The expected type for all floating point types in ptrcall is double.
@@ -486,17 +619,19 @@ void BindingsGenerator::_populate_builtin_types() {
 	// float
 	godot_type.name = "float";
 	godot_type.julia_name = "Float32";
-	godot_type.julia_return_type = "Ref{Float64}";
-	godot_type.julia_return_initial = "Ref{Float64}(0.0)";
-	godot_type.julia_return_output = "Float32(%s[])";
+	godot_type.ptrcall_type = "Ref{Float64}";
+	godot_type.ptrcall_initial = "Ref{Float64}(0.0)";
+	godot_type.ptrcall_input = "Ref{Float64}(%s)";
+	godot_type.ptrcall_output = "Float32(%s[])";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// double
 	godot_type.name = "double";
 	godot_type.julia_name = "Float64";
-	godot_type.julia_return_type = "Ref{Float64}";
-	godot_type.julia_return_initial = "Ref{Float64}(0.0)";
-	godot_type.julia_return_output = "%s[]";
+	godot_type.ptrcall_type = "Ref{Float64}";
+	godot_type.ptrcall_initial = "Ref{Float64}(0.0)";
+	godot_type.ptrcall_input = "Ref{Float64}(%s)";
+	godot_type.ptrcall_output = "%s[]";
 	builtin_types.insert(godot_type.name, godot_type);
 
 	// TODO: Struct types.
@@ -504,9 +639,10 @@ void BindingsGenerator::_populate_builtin_types() {
 	// Variant
 	godot_type.name = "Variant";
 	godot_type.julia_name = "Variant";
-	godot_type.julia_return_type = "Ref{Variant}";
-	godot_type.julia_return_initial = "Variant()";
-	godot_type.julia_return_output = "%s";
+	godot_type.ptrcall_type = "Ref{Variant}";
+	godot_type.ptrcall_initial = "Variant()";
+	godot_type.ptrcall_input = "Ref{Variant}(%s)";
+	godot_type.ptrcall_output = "%s";
 	builtin_types.insert(godot_type.name, godot_type);
 }
 
@@ -563,9 +699,10 @@ void BindingsGenerator::_populate_global_constants() {
 		enum_type.is_enum = true;
 		enum_type.name = godot_enum.name;
 		enum_type.julia_name = godot_enum.julia_name;
-		enum_type.julia_return_type = "Ref{Cint}";
-		enum_type.julia_return_initial = "Ref{Cint}(0)";
-		enum_type.julia_return_output = vformat("%s(%%s)", godot_enum.julia_name);
+		enum_type.ptrcall_type = "Ref{Cint}";
+		enum_type.ptrcall_initial = "Ref{Cint}(0)";
+		enum_type.ptrcall_input = "Ref{Cint}(%s)";
+		enum_type.ptrcall_output = vformat("%s(%%s)", godot_enum.julia_name);
 		enum_types.insert(enum_type.name, enum_type);
 		// TODO: Handle prefixes?
 	}
