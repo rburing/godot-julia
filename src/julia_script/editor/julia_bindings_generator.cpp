@@ -219,8 +219,6 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 		p_output.append("\n");
 	}
 	p_output.append("\tend\nend\n\n");
-
-	// TODO: Clean up strings.
 }
 
 const BindingsGenerator::GodotType *BindingsGenerator::_get_type_or_null(const TypeReference &p_typeref) {
