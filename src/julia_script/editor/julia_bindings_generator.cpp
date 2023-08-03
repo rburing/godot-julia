@@ -197,23 +197,28 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output) {
 	// TODO: Arguments.
 
-	p_output.append(vformat("function %s(self::Godot%s)\n", p_godot_method.julia_name, p_godot_type.julia_name));
-	p_output.append(vformat("\tmethod_bind = @ccall godot_julia_get_method_bind(string_names.%s::Ref{StringName}, string_names.%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
+	p_output.append("let\n");
+	p_output.append(vformat("\tglobal %s\n", p_godot_method.julia_name));
+	p_output.append("\tmethod_bind = C_NULL\n");
+	p_output.append(vformat("\tfunction %s(self::Godot%s)\n", p_godot_method.julia_name, p_godot_type.julia_name));
+	p_output.append("\t\tif method_bind == C_NULL\n");
+	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(string_names.%s::Ref{StringName}, string_names.%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
+	p_output.append("\t\tend\n");
 	if (p_godot_method.return_type.name == "Cvoid") {
-		p_output.append("\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, C_NULL::Ptr{Nothing})::Cvoid\n");
+		p_output.append("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, C_NULL::Ptr{Nothing})::Cvoid\n");
 	} else {
 		const GodotType *return_type = _get_type_or_null(p_godot_method.return_type);
 		ERR_FAIL_NULL_MSG(return_type, vformat("Return type not found: %s", p_godot_method.return_type.name));
 
 		// TODO: Handle more return types.
 
-		p_output.append(vformat("\tret = %s\n", return_type->julia_return_initial));
-		p_output.append(vformat("\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, ret::%s)::Cvoid\n", return_type->julia_return_type));
-		p_output.append("\treturn ");
+		p_output.append(vformat("\t\tret = %s\n", return_type->julia_return_initial));
+		p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, C_NULL::Ptr{Nothing}, ret::%s)::Cvoid\n", return_type->julia_return_type));
+		p_output.append("\t\treturn ");
 		p_output.append(vformat(return_type->julia_return_output, "ret"));
 		p_output.append("\n");
 	}
-	p_output.append("end\n\n");
+	p_output.append("\tend\nend\n\n");
 
 	// TODO: Clean up strings.
 }
