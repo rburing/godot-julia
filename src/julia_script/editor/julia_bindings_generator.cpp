@@ -306,11 +306,10 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 }
 
 void BindingsGenerator::_generate_julia_properties(const GodotType &p_godot_type, StringBuilder &p_output) {
-	p_output.append("function Base.getproperty(object::Godot");
-	p_output.append(p_godot_type.julia_name);
-	p_output.append(", ");
-	p_output.append("property::Symbol)\n");
 	// TODO: Use composition rather than inheritance?
+
+	// Getters.
+	p_output.append(vformat("function Base.getproperty(object::Godot%s, property::Symbol)\n", p_godot_type.julia_name));
 	bool first = true;
 	const GodotType *ancestor = &p_godot_type;
 	while (ancestor->parent_class_name != StringName()) { // NOTE: Object itself has no properties.
@@ -330,9 +329,34 @@ void BindingsGenerator::_generate_julia_properties(const GodotType &p_godot_type
 		p_output.append("\t\treturn getfield(object, property)\n");
 		p_output.append("\tend\n");
 	}
-	p_output.append("end\n");
+	p_output.append("end\n\n");
 
-	// TODO: Implement Base.setproperty!
+	// Setters.
+	first = true;
+	ancestor = &p_godot_type;
+	// TODO: Add multiple specialized methods, one for each type of value?
+	p_output.append(vformat("function Base.setproperty!(object::Godot%s, property::Symbol, value)\n", p_godot_type.julia_name));
+	while (ancestor->parent_class_name != StringName()) { // NOTE: Object itself has no properties.
+		for (const GodotProperty &godot_property : ancestor->properties) {
+			if (godot_property.setter == StringName()) { // NOTE: Read-only property.
+				continue;
+			}
+			p_output.append(vformat("\t%s property == :", first ? "if" : "elseif"));
+			p_output.append(godot_property.julia_name);
+			p_output.append("\n");
+			p_output.append(vformat("\t\t%s(object, value)\n", godot_property.setter));
+			first = false;
+		}
+		ancestor = &object_types[ancestor->parent_class_name];
+	}
+	if (first) {
+		p_output.append("\tsetfield!(object, property, value)\n");
+	} else {
+		p_output.append("\telse\n");
+		p_output.append("\t\tsetfield!(object, property, value)\n");
+		p_output.append("\tend\n");
+	}
+	p_output.append("end\n");
 }
 
 const BindingsGenerator::GodotType *BindingsGenerator::_get_type_or_null(const TypeReference &p_typeref) {
