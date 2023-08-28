@@ -47,6 +47,17 @@ class BindingsGenerator {
 		}
 	};
 
+	struct GodotProperty {
+		StringName name;
+		String julia_name;
+		int index = 0;
+
+		StringName setter;
+		StringName getter;
+
+		const DocData::PropertyDoc *prop_doc;
+	};
+
 	struct TypeReference {
 		StringName name;
 		bool is_enum = false;
@@ -111,6 +122,7 @@ class BindingsGenerator {
 		const DocData::ClassDoc *class_doc = nullptr;
 
 		List<GodotMethod> methods;
+		List<GodotProperty> properties;
 
 		GodotType() {}
 	};
@@ -138,6 +150,7 @@ class BindingsGenerator {
 	void _generate_variant(StringBuilder &p_output);
 	void _generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output);
 	void _generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output);
+	void _generate_julia_properties(const GodotType &p_godot_type, StringBuilder &p_output);
 
 	template <typename... VarArgs>
 	void _log(String p_format, const VarArgs... p_args);

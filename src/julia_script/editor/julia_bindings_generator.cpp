@@ -233,13 +233,13 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 
 	// TODO: Enums.
 
-	// TODO: Properties.
-
 	// Methods.
-
 	for (const GodotMethod &godot_method : p_godot_type.methods) {
 		_generate_julia_method(p_godot_type, godot_method, p_output);
 	}
+
+	// Properties.
+	_generate_julia_properties(p_godot_type, p_output);
 
 	// TODO: Signals.
 }
@@ -294,7 +294,7 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	}
 	// TODO: Handle more complex argument types.
 
-	p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, self.native_ptr::Ptr{Nothing}, %s, %s)::Cvoid\n", args_ptrcall_typed, ret_ptrcall_typed));
+	p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, getfield(self, :native_ptr)::Ptr{Nothing}, %s, %s)::Cvoid\n", args_ptrcall_typed, ret_ptrcall_typed));
 
 	if (return_type != nullptr) {
 		p_output.append("\t\treturn ");
@@ -303,6 +303,36 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	}
 
 	p_output.append("\tend\nend\n\n");
+}
+
+void BindingsGenerator::_generate_julia_properties(const GodotType &p_godot_type, StringBuilder &p_output) {
+	p_output.append("function Base.getproperty(object::Godot");
+	p_output.append(p_godot_type.julia_name);
+	p_output.append(", ");
+	p_output.append("property::Symbol)\n");
+	// TODO: Use composition rather than inheritance?
+	bool first = true;
+	const GodotType *ancestor = &p_godot_type;
+	while (ancestor->parent_class_name != StringName()) { // NOTE: Object itself has no properties.
+		for (const GodotProperty &godot_property : ancestor->properties) {
+			p_output.append(vformat("\t%s property == :", first ? "if" : "elseif"));
+			p_output.append(godot_property.julia_name);
+			p_output.append("\n");
+			p_output.append(vformat("\t\treturn %s(object)\n", godot_property.getter));
+			first = false;
+		}
+		ancestor = &object_types[ancestor->parent_class_name];
+	}
+	if (first) {
+		p_output.append("\treturn getfield(object, property)\n");
+	} else {
+		p_output.append("\telse\n");
+		p_output.append("\t\treturn getfield(object, property)\n");
+		p_output.append("\tend\n");
+	}
+	p_output.append("end\n");
+
+	// TODO: Implement Base.setproperty!
 }
 
 const BindingsGenerator::GodotType *BindingsGenerator::_get_type_or_null(const TypeReference &p_typeref) {
@@ -376,7 +406,7 @@ void BindingsGenerator::_populate_object_types() {
 		godot_class.julia_name = class_name;
 		godot_class.ptrcall_type = "Ptr{Nothing}";
 		godot_class.ptrcall_initial = "C_NULL";
-		godot_class.ptrcall_input = "%s.native_ptr";
+		godot_class.ptrcall_input = "getfield(%s, :native_ptr)";
 		godot_class.ptrcall_output = vformat("%s(%%s)", class_name);
 		godot_class.is_object_type = true;
 		godot_class.is_singleton = Engine::get_singleton()->has_singleton(class_name);
@@ -387,7 +417,54 @@ void BindingsGenerator::_populate_object_types() {
 		String doc_name = String(godot_class.name).begins_with("_") ? String(godot_class.name).substr(1) : String(godot_class.name);
 		godot_class.class_doc = &EditorHelp::get_doc_data()->class_list[doc_name];
 
-		// TODO: Properties.
+		// Populate properties.
+
+		List<PropertyInfo> property_list;
+		ClassDB::get_property_list(class_name, &property_list, true);
+
+		HashMap<StringName, StringName> accessor_methods;
+
+		for (const PropertyInfo &property : property_list) {
+			if (property.usage & PROPERTY_USAGE_GROUP || property.usage & PROPERTY_USAGE_SUBGROUP || property.usage & PROPERTY_USAGE_CATEGORY || (property.type == Variant::NIL && property.usage & PROPERTY_USAGE_ARRAY)) {
+				continue;
+			}
+
+			if (property.name.find("/") >= 0) {
+				// Ignore properties with '/' (slash) in the name. These are only meant for use in the inspector.
+				continue;
+			}
+
+			GodotProperty godot_property;
+			godot_property.name = property.name;
+			godot_property.setter = ClassDB::get_property_setter(class_name, godot_property.name);
+			godot_property.getter = ClassDB::get_property_getter(class_name, godot_property.name);
+
+			if (godot_property.setter != StringName()) {
+				accessor_methods[godot_property.setter] = godot_property.name;
+			}
+			if (godot_property.getter != StringName()) {
+				accessor_methods[godot_property.getter] = godot_property.name;
+			}
+
+			bool valid = false;
+			godot_property.index = ClassDB::get_property_index(class_name, godot_property.name, &valid);
+			ERR_FAIL_COND_MSG(!valid, "Invalid property: '" + godot_class.name + "." + String(godot_property.name) + "'.");
+
+			godot_property.julia_name = escape_julia_keyword(godot_property.name);
+
+			godot_property.prop_doc = nullptr;
+
+			for (int i = 0; i < godot_class.class_doc->properties.size(); i++) {
+				const DocData::PropertyDoc &prop_doc = godot_class.class_doc->properties[i];
+
+				if (prop_doc.name == godot_property.name) {
+					godot_property.prop_doc = &prop_doc;
+					break;
+				}
+			}
+
+			godot_class.properties.push_back(godot_property);
+		}
 
 		// TODO: Virtual methods.
 
