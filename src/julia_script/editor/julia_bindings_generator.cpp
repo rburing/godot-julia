@@ -5,6 +5,7 @@
 #include "core/core_constants.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/object/class_db.h"
 #include "core/templates/hash_set.h"
 #include "core/templates/vector.h"
 #include "editor/editor_help.h"
@@ -140,10 +141,10 @@ bool BindingsGenerator::_arg_default_value_from_variant(const Variant &p_val, Bi
 void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	for (GodotEnum &genum : global_enums) {
 		Vector<GodotConstant> extraneous_constants;
-		HashMap<int64_t, GodotConstant *> value_to_constant;
+		HashMap<int64_t, const GodotConstant *> value_to_constant;
 		// TODO: Use genum.is_flags?
 		p_output.append(vformat("@enum %s begin\n", genum.julia_name));
-		for (GodotConstant &gconstant : genum.constants) {
+		for (const GodotConstant &gconstant : genum.constants) {
 			if (!value_to_constant.has(gconstant.value)) {
 				p_output.append(vformat("%s = %d\n", gconstant.name, gconstant.value));
 				value_to_constant.insert(gconstant.value, &gconstant);
@@ -152,11 +153,11 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 			}
 		}
 		p_output.append("end\n");
-		for (GodotConstant &gconstant : extraneous_constants) {
+		for (const GodotConstant &gconstant : extraneous_constants) {
 			p_output.append(vformat("%s = %s\n", gconstant.name, value_to_constant[gconstant.value]->name));
 		}
 		// Docstrings.
-		for (GodotConstant &gconstant : genum.constants) {
+		for (const GodotConstant &gconstant : genum.constants) {
 			p_output.append(vformat("@doc raw\"\"\"%s\"\"\"\n%s\n", fix_doc_description(gconstant.documentation->description), gconstant.name));
 		}
 		p_output.append("\n");
@@ -229,9 +230,40 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 
 	// TODO: Handle singletons.
 
-	// TODO: Constants.
-
-	// TODO: Enums.
+	// Enums and constants.
+	p_output.append(vformat("baremodule %sInfo\n", p_godot_type.julia_name));
+	p_output.append("using Base: @enum, @raw_str\n");
+	p_output.append("using Core: @doc\n\n");
+	// Enums.
+	for (const GodotEnum &genum : p_godot_type.enums) {
+		Vector<GodotConstant> extraneous_constants;
+		HashMap<int64_t, const GodotConstant *> value_to_constant;
+		// TODO: Use genum.is_flags?
+		p_output.append(vformat("@enum %s begin\n", genum.julia_name));
+		for (const GodotConstant &gconstant : genum.constants) {
+			if (!value_to_constant.has(gconstant.value)) {
+				p_output.append(vformat("%s = %d\n", gconstant.name, gconstant.value));
+				value_to_constant.insert(gconstant.value, &gconstant);
+			} else {
+				extraneous_constants.append(gconstant);
+			}
+		}
+		p_output.append("end\n");
+		for (const GodotConstant &gconstant : extraneous_constants) {
+			p_output.append(vformat("%s = %s\n", gconstant.name, value_to_constant[gconstant.value]->name));
+		}
+		// Docstrings.
+		for (const GodotConstant &gconstant : genum.constants) {
+			p_output.append(vformat("@doc raw\"\"\"%s\"\"\"\n%s\n", fix_doc_description(gconstant.documentation->description), gconstant.name));
+		}
+		p_output.append("\n");
+	}
+	// Constants.
+	for (const GodotConstant &gconstant : p_godot_type.constants) {
+		p_output.append(vformat("@doc raw\"\"\"%s\"\"\"\n", fix_doc_description(gconstant.documentation->description)));
+		p_output.append(vformat("%s = %d\n\n", gconstant.name, gconstant.value));
+	}
+	p_output.append("end\n\n");
 
 	// Methods.
 	for (const GodotMethod &godot_method : p_godot_type.methods) {
@@ -391,35 +423,33 @@ const BindingsGenerator::GodotType *BindingsGenerator::_get_type_or_null(const T
 void BindingsGenerator::_populate_object_types() {
 	object_types.clear();
 
-	// Breadth-first search from Object.
+	// Depth-first search from Object.
 	List<StringName> class_list;
 	class_list.push_front("Object");
 
 	while (class_list.size() > 0) {
 		StringName class_name = class_list.front()->get();
+		class_list.pop_front();
 
 		List<StringName> inheriters;
 		ClassDB::get_direct_inheriters_from_class(class_name, &inheriters);
 		for (StringName &inheriter : inheriters) {
-			class_list.push_back(inheriter);
+			class_list.push_front(inheriter);
 		}
 
 		ClassDB::APIType api_type = ClassDB::get_api_type(class_name);
 
 		if (api_type == ClassDB::API_NONE) {
-			class_list.pop_front();
 			continue;
 		}
 
 		if (!ClassDB::is_class_exposed(class_name)) {
 			_log("Ignoring type '%s' because it's not exposed\n", String(class_name).utf8().get_data());
-			class_list.pop_front();
 			continue;
 		}
 
 		if (!ClassDB::is_class_enabled(class_name)) {
 			_log("Ignoring type '%s' because it's not enabled\n", String(class_name).utf8().get_data());
-			class_list.pop_front();
 			continue;
 		}
 
@@ -621,11 +651,77 @@ void BindingsGenerator::_populate_object_types() {
 
 		// TODO: Signals.
 
-		// TODO: Enums and constants.
+		// Populate enums and constants.
+
+		List<String> constants;
+		ClassDB::get_integer_constant_list(class_name, &constants, true);
+
+		const HashMap<StringName, ClassDB::ClassInfo::EnumInfo> &enum_map = class_info->enum_map;
+
+		for (const KeyValue<StringName, ClassDB::ClassInfo::EnumInfo> &E : enum_map) {
+			StringName enum_name = E.key;
+			StringName enum_julia_name = enum_name;
+			GodotEnum genum(enum_name, enum_julia_name);
+			genum.julia_qualified_name = vformat("%sInfo.%s", class_name, enum_name);
+			genum.is_flags = E.value.is_bitfield;
+
+			const List<StringName> &enum_constants = E.value.constants;
+			for (const StringName &constant_cname : enum_constants) {
+				String constant_name = constant_cname.operator String();
+				int64_t *value = class_info->constant_map.getptr(constant_cname);
+				ERR_FAIL_NULL_MSG(value, vformat("Failed to find value of enum constant %s::%s", class_name, constant_name));
+				constants.erase(constant_name);
+
+				GodotConstant gconstant(constant_name, *value);
+
+				gconstant.documentation = nullptr;
+				for (int i = 0; i < godot_class.class_doc->constants.size(); i++) {
+					const DocData::ConstantDoc &const_doc = godot_class.class_doc->constants[i];
+
+					if (const_doc.name == gconstant.name) {
+						gconstant.documentation = &const_doc;
+						break;
+					}
+				}
+
+				genum.constants.push_back(gconstant);
+			}
+
+			godot_class.enums.push_back(genum);
+
+			GodotType enum_type;
+			enum_type.is_enum = true;
+			enum_type.name = vformat("%s.%s", class_name, genum.name);
+			enum_type.julia_name = genum.julia_qualified_name;
+			enum_type.ptrcall_type = "Ref{Cint}";
+			enum_type.ptrcall_initial = "Ref{Cint}(0)";
+			enum_type.ptrcall_input = "Ref{Cint}(Cint(%s))";
+			enum_type.ptrcall_output = vformat("%s(%%s[])", genum.julia_qualified_name);
+			enum_types.insert(enum_type.name, enum_type);
+		}
+
+		for (const String &constant_name : constants) {
+			int64_t *value = class_info->constant_map.getptr(StringName(constant_name));
+			ERR_FAIL_NULL_MSG(value, vformat("Failed to find value of constant %s::%s", class_name, constant_name));
+
+			GodotConstant gconstant(constant_name, *value);
+
+			gconstant.documentation = nullptr;
+			for (int i = 0; i < godot_class.class_doc->constants.size(); i++) {
+				const DocData::ConstantDoc &const_doc = godot_class.class_doc->constants[i];
+
+				if (const_doc.name == gconstant.name) {
+					gconstant.documentation = &const_doc;
+					break;
+				}
+			}
+
+			godot_class.constants.push_back(gconstant);
+		}
 
 		object_types.insert(godot_class.name, godot_class);
 
-		class_list.pop_front();
+		// TODO: Singletons.
 	}
 }
 
@@ -782,6 +878,7 @@ void BindingsGenerator::_populate_global_constants() {
 				julia_name = "VariantOperator";
 			}
 			GodotEnum genum(enum_name, julia_name);
+			genum.julia_qualified_name = julia_name;
 			genum.is_flags = CoreConstants::is_global_constant_bitfield(i);
 			List<GodotEnum>::Element *enum_match = global_enums.find(genum);
 			if (enum_match) {
@@ -799,11 +896,11 @@ void BindingsGenerator::_populate_global_constants() {
 		GodotType enum_type;
 		enum_type.is_enum = true;
 		enum_type.name = godot_enum.name;
-		enum_type.julia_name = godot_enum.julia_name;
+		enum_type.julia_name = godot_enum.julia_qualified_name;
 		enum_type.ptrcall_type = "Ref{Cint}";
 		enum_type.ptrcall_initial = "Ref{Cint}(0)";
-		enum_type.ptrcall_input = "Ref{Cint}(%s)";
-		enum_type.ptrcall_output = vformat("%s(%%s)", godot_enum.julia_name);
+		enum_type.ptrcall_input = "Ref{Cint}(Cint(%s))";
+		enum_type.ptrcall_output = vformat("%s(%%s[])", godot_enum.julia_qualified_name);
 		enum_types.insert(enum_type.name, enum_type);
 		// TODO: Handle prefixes?
 	}
@@ -914,8 +1011,56 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 
 		module_source.append("include(\"Variant.jl\");\n\n");
 
+		// Objects and their methods can depend on the types of (enums from) other objects.
+		// So we have to take these dependencies into account when ordering the includes.
+		Vector<StringName> includes;
+		HashMap<StringName, HashSet<StringName>> type_dependencies;
 		for (const KeyValue<StringName, GodotType> &E : object_types) {
-			module_source.append(vformat("include(\"%s.jl\");\n", E.value.julia_name));
+			includes.push_back(E.key);
+			String class_name = E.key;
+			HashSet<StringName> dependencies;
+			if (E.value.parent_class_name != StringName()) {
+				dependencies.insert(E.value.parent_class_name);
+			}
+			for (const GodotMethod &method : E.value.methods) {
+				for (const GodotArgument &arg : method.arguments) {
+					const GodotType *type = _get_type_or_null(arg.type);
+					if (type == nullptr) {
+						continue;
+					}
+					String type_name = type->name;
+					int dot_pos = type_name.find(".");
+					if (dot_pos == -1) {
+						continue;
+					}
+					String dependency = type_name.substr(0, dot_pos);
+					if (dependency != class_name) {
+						dependencies.insert(dependency);
+					}
+				}
+			}
+			type_dependencies.insert(E.key, dependencies);
+		}
+
+		int includes_count = includes.size();
+		int i = 0;
+		while (i < includes_count) {
+			StringName current = includes[i];
+			int lowest_dependency = -1;
+			for (const StringName &dependency : type_dependencies[includes[i]]) {
+				lowest_dependency = MAX(lowest_dependency, includes.find(dependency));
+			}
+			if (lowest_dependency > i) {
+				// Move the current include after its lowest dependency.
+				includes.remove_at(i);
+				includes.insert(lowest_dependency, current);
+			} else {
+				i++;
+			}
+		}
+
+		for (const StringName &include : includes) {
+			module_source.append(vformat("include(\"%s.jl\");\n", include));
 		}
 
 		module_source.append("\nend # module\n");

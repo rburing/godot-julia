@@ -32,6 +32,7 @@ class BindingsGenerator {
 	struct GodotEnum {
 		StringName name;
 		String julia_name;
+		String julia_qualified_name;
 		List<GodotConstant> constants;
 		bool is_flags = false;
 
@@ -121,6 +122,8 @@ class BindingsGenerator {
 
 		const DocData::ClassDoc *class_doc = nullptr;
 
+		List<GodotConstant> constants;
+		List<GodotEnum> enums;
 		List<GodotMethod> methods;
 		List<GodotProperty> properties;
 
