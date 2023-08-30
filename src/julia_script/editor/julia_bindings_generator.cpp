@@ -110,27 +110,63 @@ bool BindingsGenerator::_arg_default_value_from_variant(const Variant &p_val, Bi
 
 	switch (p_val.get_type()) {
 		// Either Object type or Variant.
-		case Variant::NIL:
+		case Variant::NIL: {
 			r_arg.julia_default_value = "Variant()";
-			break;
+		} break;
 		// Atomic types.
-		case Variant::BOOL:
+		case Variant::BOOL: {
 			r_arg.julia_default_value = bool(p_val) ? "true" : "false";
-			break;
-		case Variant::INT:
+		} break;
+		case Variant::INT: {
 			if (r_arg.type.name != "int") {
 				r_arg.julia_default_value = vformat("%s(%s)", r_arg.type.name, r_arg.julia_default_value);
 			}
-			break;
-		case Variant::FLOAT:
+		} break;
+		case Variant::FLOAT: {
 			if (r_arg.type.name == "float") {
 				r_arg.julia_default_value += "f0";
 			}
-			break;
+		} break;
+		case Variant::VECTOR2: {
+			Vector2 v = p_val;
+#ifdef REAL_T_IS_DOUBLE
+			r_arg.julia_default_value = vformat("Vector2(%f, %f)", v.x, v.y);
+#else
+			r_arg.julia_default_value = vformat("Vector2(%ff0, %ff0)", v.x, v.y);
+#endif
+		} break;
+		case Variant::VECTOR2I: {
+			Vector2i v = p_val;
+			r_arg.julia_default_value = vformat("Vector2i(%d, %d)", v.x, v.y);
+		} break;
+		case Variant::VECTOR3: {
+			Vector3 v = p_val;
+#ifdef REAL_T_IS_DOUBLE
+			r_arg.julia_default_value = vformat("Vector3(%f, %f, %f)", v.x, v.y, v.z);
+#else
+			r_arg.julia_default_value = vformat("Vector3(%ff0, %ff0, %ff0)", v.x, v.y, v.z);
+#endif
+		} break;
+		case Variant::VECTOR3I: {
+			Vector3i v = p_val;
+			r_arg.julia_default_value = vformat("Vector3i(%d, %d, %d)", v.x, v.y, v.z);
+		} break;
+		case Variant::VECTOR4: {
+			Vector4 v = p_val;
+#ifdef REAL_T_IS_DOUBLE
+			r_arg.julia_default_value = vformat("Vector4(%f, %f, %f, %f)", v.x, v.y, v.z, v.w);
+#else
+			r_arg.julia_default_value = vformat("Vector4(%ff0, %ff0, %ff0, %ff0)", v.x, v.y, v.z, v.w);
+#endif
+		} break;
+		case Variant::VECTOR4I: {
+			Vector4i v = p_val;
+			r_arg.julia_default_value = vformat("Vector4i(%d, %d, %d, %d)", v.x, v.y, v.z, v.w);
+		} break;
 		// TODO: Handle more complex types.
-		default:
+		default: {
 			ERR_FAIL_V_MSG(false, "Unexpected Variant type in argument: " + itos(p_val.get_type()));
-			break;
+		} break;
 	}
 
 	// TODO: Handle nullable types.
@@ -573,7 +609,13 @@ void BindingsGenerator::_populate_object_types() {
 				if (!(argument_type == Variant::NIL ||
 							argument_type == Variant::BOOL ||
 							argument_type == Variant::INT ||
-							argument_type == Variant::FLOAT)) {
+							argument_type == Variant::FLOAT ||
+							argument_type == Variant::VECTOR2 ||
+							argument_type == Variant::VECTOR2I ||
+							argument_type == Variant::VECTOR3 ||
+							argument_type == Variant::VECTOR3I ||
+							argument_type == Variant::VECTOR4 ||
+							argument_type == Variant::VECTOR4I)) {
 					arguments_supported = false;
 					break;
 				}
@@ -614,7 +656,13 @@ void BindingsGenerator::_populate_object_types() {
 			if (!(return_info.type == Variant::NIL ||
 						return_info.type == Variant::BOOL ||
 						return_info.type == Variant::INT ||
-						return_info.type == Variant::FLOAT)) {
+						return_info.type == Variant::FLOAT ||
+						return_info.type == Variant::VECTOR2 ||
+						return_info.type == Variant::VECTOR2I ||
+						return_info.type == Variant::VECTOR3 ||
+						return_info.type == Variant::VECTOR3I ||
+						return_info.type == Variant::VECTOR4 ||
+						return_info.type == Variant::VECTOR4I)) {
 				continue;
 			}
 
@@ -866,7 +914,61 @@ void BindingsGenerator::_populate_builtin_types() {
 	godot_type.ptrcall_output = "%s[]";
 	builtin_types.insert(godot_type.name, godot_type);
 
-	// TODO: Struct types.
+	// Vector2
+	godot_type.name = "Vector2";
+	godot_type.julia_name = "Vector2";
+	godot_type.ptrcall_type = "Ref{Vector2}";
+	godot_type.ptrcall_initial = "Ref{Vector2}(Vector2(0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector2}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// Vector2i
+	godot_type.name = "Vector2i";
+	godot_type.julia_name = "Vector2i";
+	godot_type.ptrcall_type = "Ref{Vector2i}";
+	godot_type.ptrcall_initial = "Ref{Vector2i}(Vector2i(0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector2i}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// Vector3
+	godot_type.name = "Vector3";
+	godot_type.julia_name = "Vector3";
+	godot_type.ptrcall_type = "Ref{Vector3}";
+	godot_type.ptrcall_initial = "Ref{Vector3}(Vector3(0, 0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector3}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// Vector3i
+	godot_type.name = "Vector3i";
+	godot_type.julia_name = "Vector3i";
+	godot_type.ptrcall_type = "Ref{Vector3i}";
+	godot_type.ptrcall_initial = "Ref{Vector3i}(Vector3i(0, 0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector3i}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// Vector4
+	godot_type.name = "Vector4";
+	godot_type.julia_name = "Vector4";
+	godot_type.ptrcall_type = "Ref{Vector4}";
+	godot_type.ptrcall_initial = "Ref{Vector4}(Vector4(0, 0, 0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector4}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// Vector4i
+	godot_type.name = "Vector4i";
+	godot_type.julia_name = "Vector4i";
+	godot_type.ptrcall_type = "Ref{Vector4i}";
+	godot_type.ptrcall_initial = "Ref{Vector4i}(Vector4i(0, 0, 0, 0))";
+	godot_type.ptrcall_input = "Ref{Vector4i}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// TODO: More struct types.
 
 	// Variant
 	godot_type.name = "Variant";
