@@ -148,12 +148,13 @@ class BindingsGenerator {
 
 	const GodotType *_get_type_or_null(const TypeReference &p_typeref);
 
+	void _generate_core_constants(StringBuilder &p_output);
 	void _generate_global_constants(StringBuilder &p_output);
 	void _generate_string_names(StringBuilder &p_output);
-	void _generate_variant(StringBuilder &p_output);
 	void _generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output);
 	void _generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output);
 	void _generate_julia_properties(const GodotType &p_godot_type, StringBuilder &p_output);
+	void _generate_julia_object_types_includes(StringBuilder &p_output);
 
 	template <typename... VarArgs>
 	void _log(String p_format, const VarArgs... p_args);
@@ -161,8 +162,7 @@ class BindingsGenerator {
 	void _initialize();
 
 public:
-	Error generate_julia_project_file(const String &p_project_file);
-	Error generate_julia_module(const String &p_module_dir);
+	Error generate_julia_sources(const String &p_sources_dir);
 	Error generate_julia_package(const String &p_package_dir);
 	Error install_julia_package(const String &p_package_dir);
 	void precompile_julia_package();

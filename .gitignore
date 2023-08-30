@@ -9,4 +9,4 @@ __pycache__/
 .vscode/
 
 # Generated
-src/julia_script/glue/Godot.jl/
+src/julia_script/glue/Godot.jl/src/generated/

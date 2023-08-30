@@ -138,6 +138,16 @@ bool BindingsGenerator::_arg_default_value_from_variant(const Variant &p_val, Bi
 	return true;
 }
 
+void BindingsGenerator::_generate_core_constants(StringBuilder &p_output) {
+#ifdef REAL_T_IS_DOUBLE
+	p_output.append("RealT = Float64\n");
+	p_output.append("const VARIANT_SIZE = 40 # assuming real_t is double\n");
+#else
+	p_output.append("RealT = Float32\n");
+	p_output.append("const VARIANT_SIZE = 24 # assuming real_t is float\n");
+#endif
+}
+
 void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	for (GodotEnum &genum : global_enums) {
 		Vector<GodotConstant> extraneous_constants;
@@ -165,21 +175,6 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 }
 
 void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
-	p_output.append("mutable struct StringName\n");
-	p_output.append("\tdata::Ptr{Nothing}\n");
-	p_output.append("\tfunction StringName(string::String)\n");
-	p_output.append("\t\tchars = transcode(UInt16, string * '\\0')\n");
-	p_output.append("\t\tstring = GodotString(C_NULL)\n");
-	p_output.append("\t\t@ccall godot_julia_string_new_from_utf16_chars(string::Ref{GodotString}, chars::Ref{UInt16})::Cvoid\n");
-	p_output.append("\t\tdestroy_string(s) = @ccall godot_julia_string_destroy(s::Ref{GodotString})::Cvoid\n");
-	p_output.append("\t\tfinalizer(destroy_string, string)\n");
-	p_output.append("\t\tstring_name = new(C_NULL)\n");
-	p_output.append("\t\t@ccall godot_julia_string_name_new_from_string(string_name::Ref{StringName}, string::Ref{GodotString})::Cvoid\n");
-	p_output.append("\t\tdestroy_string_name(s) = @ccall godot_julia_string_name_destroy(s::Ref{StringName})::Cvoid\n");
-	p_output.append("\t\tfinalizer(destroy_string_name, string_name)\n");
-	p_output.append("\tend\n");
-	p_output.append("end\n\n");
-
 	HashSet<StringName> string_names;
 	for (const KeyValue<StringName, GodotType> &E : object_types) {
 		string_names.insert(E.value.name);
@@ -200,21 +195,6 @@ void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
 		p_output.append(vformat("\tstring_names._%s = StringName(\"%s\")\n", string_name, string_name));
 	}
 	p_output.append("end\n\n");
-}
-
-void BindingsGenerator::_generate_variant(StringBuilder &p_output) {
-	p_output.append("abstract type GodotVariant end\n\n");
-	p_output.append("mutable struct Variant <: GodotVariant\n");
-#ifdef REAL_T_IS_DOUBLE
-	p_output.append("\tdata::NTuple{40, UInt8} # assuming real_t is double\n");
-	p_output.append("\tVariant() = new(tuple(zeros(UInt8, 40)...))\n");
-#else
-	p_output.append("\tdata::NTuple{24, UInt8} # assuming real_t is float\n");
-	p_output.append("\tVariant() = new(tuple(zeros(UInt8, 24)...))\n");
-#endif
-	p_output.append("end\n\n");
-
-	p_output.append("variant_type(v::Variant) = VariantType(v.data[1])\n\n");
 }
 
 void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output) {
@@ -418,6 +398,61 @@ const BindingsGenerator::GodotType *BindingsGenerator::_get_type_or_null(const T
 	}
 
 	return nullptr;
+}
+
+void BindingsGenerator::_generate_julia_object_types_includes(StringBuilder &p_output) {
+	// Objects and their methods can depend on the types of (enums from) other objects.
+	// So we have to take these dependencies into account when ordering the includes.
+
+	Vector<StringName> includes;
+	HashMap<StringName, HashSet<StringName>> type_dependencies;
+	for (const KeyValue<StringName, GodotType> &E : object_types) {
+		includes.push_back(E.key);
+		String class_name = E.key;
+		HashSet<StringName> dependencies;
+		if (E.value.parent_class_name != StringName()) {
+			dependencies.insert(E.value.parent_class_name);
+		}
+		for (const GodotMethod &method : E.value.methods) {
+			for (const GodotArgument &arg : method.arguments) {
+				const GodotType *type = _get_type_or_null(arg.type);
+				if (type == nullptr) {
+					continue;
+				}
+				String type_name = type->name;
+				int dot_pos = type_name.find(".");
+				if (dot_pos == -1) {
+					continue;
+				}
+				String dependency = type_name.substr(0, dot_pos);
+				if (dependency != class_name) {
+					dependencies.insert(dependency);
+				}
+			}
+		}
+		type_dependencies.insert(E.key, dependencies);
+	}
+
+	int includes_count = includes.size();
+	int i = 0;
+	while (i < includes_count) {
+		StringName current = includes[i];
+		int lowest_dependency = -1;
+		for (const StringName &dependency : type_dependencies[includes[i]]) {
+			lowest_dependency = MAX(lowest_dependency, includes.find(dependency));
+		}
+		if (lowest_dependency > i) {
+			// Move the current include after its lowest dependency.
+			includes.remove_at(i);
+			includes.insert(lowest_dependency, current);
+		} else {
+			i++;
+		}
+	}
+
+	for (const StringName &include : includes) {
+		p_output.append(vformat("include(\"classes/%s.jl\");\n", include));
+	}
 }
 
 void BindingsGenerator::_populate_object_types() {
@@ -924,35 +959,35 @@ void BindingsGenerator::_initialize() {
 	initialized = true;
 }
 
-Error BindingsGenerator::generate_julia_project_file(const String &p_project_file) {
-	ERR_FAIL_COND_V(!initialized, ERR_UNCONFIGURED);
-
-	StringBuilder project_source;
-	project_source.append("name = \"Godot\"\n");
-	project_source.append("uuid = \"7de006e5-8474-4dac-b065-c8f25e0b26d0\"\n");
-	project_source.append("version = \"0.1.0\"\n");
-	project_source.append("authors = [\"Ricardo Buring <ricardo.buring@gmail.com>\"]\n");
-	return _save_file(p_project_file, project_source);
-}
-
-Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
+Error BindingsGenerator::generate_julia_sources(const String &p_sources_dir) {
 	ERR_FAIL_COND_V(!initialized, ERR_UNCONFIGURED);
 
 	Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
 	ERR_FAIL_COND_V(da.is_null(), ERR_CANT_CREATE);
 
-	if (!DirAccess::exists(p_module_dir)) {
-		Error err = da->make_dir_recursive(p_module_dir);
-		ERR_FAIL_COND_V_MSG(err != OK, ERR_CANT_CREATE, "Cannot create directory '" + p_module_dir + "'.");
+	if (!DirAccess::exists(p_sources_dir.path_join("classes"))) {
+		Error err = da->make_dir_recursive(p_sources_dir.path_join("classes"));
+		ERR_FAIL_COND_V_MSG(err != OK, ERR_CANT_CREATE, "Cannot create directory '" + p_sources_dir + "'.");
 	}
 
-	da->change_dir(p_module_dir);
+	da->change_dir(p_sources_dir);
+
+	// Generate source file for core constants.
+	{
+		StringBuilder core_constants_source;
+		_generate_core_constants(core_constants_source);
+		String output_file = p_sources_dir.path_join("core_constants.jl");
+		Error save_err = _save_file(output_file, core_constants_source);
+		if (save_err != OK) {
+			return save_err;
+		}
+	}
 
 	// Generate source file for global scope constants and enums.
 	{
 		StringBuilder constants_source;
 		_generate_global_constants(constants_source);
-		String output_file = p_module_dir.path_join("constants.jl");
+		String output_file = p_sources_dir.path_join("constants.jl");
 		Error save_err = _save_file(output_file, constants_source);
 		if (save_err != OK) {
 			return save_err;
@@ -963,19 +998,8 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 	{
 		StringBuilder strings_source;
 		_generate_string_names(strings_source);
-		String output_file = p_module_dir.path_join("StringName.jl");
+		String output_file = p_sources_dir.path_join("string_names.jl");
 		Error save_err = _save_file(output_file, strings_source);
-		if (save_err != OK) {
-			return save_err;
-		}
-	}
-
-	// Generate source file for variant.
-	{
-		StringBuilder variant_source;
-		_generate_variant(variant_source);
-		String output_file = p_module_dir.path_join("Variant.jl");
-		Error save_err = _save_file(output_file, variant_source);
 		if (save_err != OK) {
 			return save_err;
 		}
@@ -991,115 +1015,22 @@ Error BindingsGenerator::generate_julia_module(const String &p_module_dir) {
 
 		StringBuilder object_type_source;
 		_generate_julia_type(godot_type, object_type_source);
-		String output_file = p_module_dir.path_join(godot_type.julia_name + ".jl");
+		String output_file = p_sources_dir.path_join("classes").path_join(godot_type.julia_name + ".jl");
 		Error save_err = _save_file(output_file, object_type_source);
 		if (save_err != OK) {
 			return save_err;
 		}
 	}
 
-	// Generate top-level module file.
+	// Generate source file that includes the files for all object types.
 	{
-		StringBuilder module_source;
-		module_source.append("module Godot\n\n");
-		module_source.append("include(\"constants.jl\");\n\n");
-
-		// TODO: Separate this.
-		module_source.append("mutable struct GodotString\n\tcowdata::Ptr{Char}\nend\n\n");
-
-		module_source.append("include(\"StringName.jl\");\n\n");
-
-		module_source.append("include(\"Variant.jl\");\n\n");
-
-		// Objects and their methods can depend on the types of (enums from) other objects.
-		// So we have to take these dependencies into account when ordering the includes.
-		Vector<StringName> includes;
-		HashMap<StringName, HashSet<StringName>> type_dependencies;
-		for (const KeyValue<StringName, GodotType> &E : object_types) {
-			includes.push_back(E.key);
-			String class_name = E.key;
-			HashSet<StringName> dependencies;
-			if (E.value.parent_class_name != StringName()) {
-				dependencies.insert(E.value.parent_class_name);
-			}
-			for (const GodotMethod &method : E.value.methods) {
-				for (const GodotArgument &arg : method.arguments) {
-					const GodotType *type = _get_type_or_null(arg.type);
-					if (type == nullptr) {
-						continue;
-					}
-					String type_name = type->name;
-					int dot_pos = type_name.find(".");
-					if (dot_pos == -1) {
-						continue;
-					}
-					String dependency = type_name.substr(0, dot_pos);
-					if (dependency != class_name) {
-						dependencies.insert(dependency);
-					}
-				}
-			}
-			type_dependencies.insert(E.key, dependencies);
-		}
-
-		int includes_count = includes.size();
-		int i = 0;
-		while (i < includes_count) {
-			StringName current = includes[i];
-			int lowest_dependency = -1;
-			for (const StringName &dependency : type_dependencies[includes[i]]) {
-				lowest_dependency = MAX(lowest_dependency, includes.find(dependency));
-			}
-			if (lowest_dependency > i) {
-				// Move the current include after its lowest dependency.
-				includes.remove_at(i);
-				includes.insert(lowest_dependency, current);
-			} else {
-				i++;
-			}
-		}
-
-		for (const StringName &include : includes) {
-			module_source.append(vformat("include(\"%s.jl\");\n", include));
-		}
-
-		module_source.append("\nend # module\n");
-		String output_file = p_module_dir.path_join("Godot.jl");
-		Error save_err = _save_file(output_file, module_source);
+		StringBuilder object_types_source;
+		_generate_julia_object_types_includes(object_types_source);
+		String output_file = p_sources_dir.path_join("classes.jl");
+		Error save_err = _save_file(output_file, object_types_source);
 		if (save_err != OK) {
 			return save_err;
 		}
-	}
-
-	return OK;
-}
-
-Error BindingsGenerator::generate_julia_package(const String &p_package_dir) {
-	ERR_FAIL_COND_V(!initialized, ERR_UNCONFIGURED);
-
-	// TODO: Convert to absolute path?
-	String package_dir = p_package_dir;
-
-	Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
-	ERR_FAIL_COND_V(da.is_null(), ERR_CANT_CREATE);
-
-	if (!DirAccess::exists(package_dir)) {
-		Error err = da->make_dir_recursive(package_dir);
-		ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
-	}
-
-	String project_file = package_dir.path_join("Project.toml");
-	Error project_file_err = generate_julia_project_file(project_file);
-	if (project_file_err != OK) {
-		ERR_PRINT("Generation of the Julia project file failed.");
-		return project_file_err;
-	}
-
-	String module_dir = package_dir.path_join("src");
-	Error module_err = generate_julia_module(module_dir);
-	if (module_err != OK) {
-		ERR_PRINT("Generation of the Julia module failed.");
-		return module_err;
 	}
 
 	_log("The Julia package " + String(JULIA_PKG_NAME) + " was successfully generated.\n");
@@ -1149,7 +1080,7 @@ void JuliaBindingsGenerator::initialize() {
 
 	CRASH_COND(glue_dir_path.is_empty());
 
-	if (bindings_generator.generate_julia_package(glue_dir_path.path_join(JULIA_PKG_NAME)) != OK) {
+	if (bindings_generator.generate_julia_sources(glue_dir_path.path_join(JULIA_PKG_NAME).path_join("src").path_join("generated")) != OK) {
 		ERR_PRINT("Failed to generate the Julia package.");
 		return;
 	}
