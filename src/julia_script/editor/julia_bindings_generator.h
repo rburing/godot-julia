@@ -57,7 +57,7 @@ class BindingsGenerator {
 		StringName setter;
 		StringName getter;
 
-		const DocData::PropertyDoc *prop_doc;
+		const DocData::PropertyDoc *documentation;
 	};
 
 	struct TypeReference {
@@ -94,7 +94,7 @@ class BindingsGenerator {
 
 		List<GodotArgument> arguments;
 
-		const DocData::MethodDoc *method_doc = nullptr;
+		const DocData::MethodDoc *documentation = nullptr;
 
 		GodotMethod() {}
 	};
@@ -121,7 +121,7 @@ class BindingsGenerator {
 		StringName parent_class_name;
 		ClassDB::APIType api_type = ClassDB::API_NONE;
 
-		const DocData::ClassDoc *class_doc = nullptr;
+		const DocData::ClassDoc *documentation = nullptr;
 
 		List<GodotConstant> constants;
 		List<GodotEnum> enums;

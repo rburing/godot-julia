@@ -241,8 +241,8 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 	}
 	p_output.append(" end\n\n");
 	p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n",
-			fix_doc_description(p_godot_type.class_doc->brief_description),
-			fix_doc_description(p_godot_type.class_doc->description)));
+			fix_doc_description(p_godot_type.documentation->brief_description),
+			fix_doc_description(p_godot_type.documentation->description)));
 	String class_name = p_godot_type.julia_name;
 	if (p_godot_type.is_singleton) {
 		class_name += JULIA_SINGLETON_INSTANCE_SUFFIX;
@@ -574,7 +574,7 @@ void BindingsGenerator::_populate_object_types() {
 		godot_class.parent_class_name = ClassDB::get_parent_class(class_name);
 
 		String doc_name = String(godot_class.name).begins_with("_") ? String(godot_class.name).substr(1) : String(godot_class.name);
-		godot_class.class_doc = &EditorHelp::get_doc_data()->class_list[doc_name];
+		godot_class.documentation = &EditorHelp::get_doc_data()->class_list[doc_name];
 
 		// Populate properties.
 
@@ -611,13 +611,13 @@ void BindingsGenerator::_populate_object_types() {
 
 			godot_property.julia_name = escape_julia_keyword(godot_property.name);
 
-			godot_property.prop_doc = nullptr;
+			godot_property.documentation = nullptr;
 
-			for (int i = 0; i < godot_class.class_doc->properties.size(); i++) {
-				const DocData::PropertyDoc &prop_doc = godot_class.class_doc->properties[i];
+			for (int i = 0; i < godot_class.documentation->properties.size(); i++) {
+				const DocData::PropertyDoc &documentation = godot_class.documentation->properties[i];
 
-				if (prop_doc.name == godot_property.name) {
-					godot_property.prop_doc = &prop_doc;
+				if (documentation.name == godot_property.name) {
+					godot_property.documentation = &documentation;
 					break;
 				}
 			}
@@ -754,10 +754,10 @@ void BindingsGenerator::_populate_object_types() {
 				godot_method.arguments.push_back(godot_arg);
 			}
 
-			if (godot_class.class_doc) {
-				for (int i = 0; i < godot_class.class_doc->methods.size(); i++) {
-					if (godot_class.class_doc->methods[i].name == godot_method.name) {
-						godot_method.method_doc = &godot_class.class_doc->methods[i];
+			if (godot_class.documentation) {
+				for (int i = 0; i < godot_class.documentation->methods.size(); i++) {
+					if (godot_class.documentation->methods[i].name == godot_method.name) {
+						godot_method.documentation = &godot_class.documentation->methods[i];
 						break;
 					}
 				}
@@ -792,8 +792,8 @@ void BindingsGenerator::_populate_object_types() {
 				GodotConstant gconstant(constant_name, *value);
 
 				gconstant.documentation = nullptr;
-				for (int i = 0; i < godot_class.class_doc->constants.size(); i++) {
-					const DocData::ConstantDoc &const_doc = godot_class.class_doc->constants[i];
+				for (int i = 0; i < godot_class.documentation->constants.size(); i++) {
+					const DocData::ConstantDoc &const_doc = godot_class.documentation->constants[i];
 
 					if (const_doc.name == gconstant.name) {
 						gconstant.documentation = &const_doc;
@@ -824,8 +824,8 @@ void BindingsGenerator::_populate_object_types() {
 			GodotConstant gconstant(constant_name, *value);
 
 			gconstant.documentation = nullptr;
-			for (int i = 0; i < godot_class.class_doc->constants.size(); i++) {
-				const DocData::ConstantDoc &const_doc = godot_class.class_doc->constants[i];
+			for (int i = 0; i < godot_class.documentation->constants.size(); i++) {
+				const DocData::ConstantDoc &const_doc = godot_class.documentation->constants[i];
 
 				if (const_doc.name == gconstant.name) {
 					gconstant.documentation = &const_doc;
