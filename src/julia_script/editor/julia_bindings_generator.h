@@ -14,6 +14,7 @@
 
 #define JULIA_PKG_NAME "Godot.jl"
 #define JULIA_MODULE_NAME "Godot"
+#define JULIA_SINGLETON_INSTANCE_SUFFIX "Instance"
 
 class BindingsGenerator {
 	struct GodotConstant {
@@ -140,11 +141,14 @@ class BindingsGenerator {
 	HashMap<StringName, GodotType> enum_types;
 	HashMap<StringName, GodotType> object_types;
 
+	HashMap<StringName, List<const GodotType *>> object_type_dependencies;
+
 	bool _arg_default_value_from_variant(const Variant &p_val, GodotArgument &r_iarg);
 
 	void _populate_global_constants();
 	void _populate_builtin_types();
 	void _populate_object_types();
+	void _populate_object_type_dependencies();
 
 	const GodotType *_get_type_or_null(const TypeReference &p_typeref);
 

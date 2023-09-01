@@ -236,15 +236,20 @@ void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
 void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output) {
 	p_output.append(vformat("abstract type Godot%s", p_godot_type.julia_name));
 	if (p_godot_type.parent_class_name != StringName()) {
-		p_output.append(vformat(" <: Godot%s", object_types[p_godot_type.parent_class_name].julia_name));
+		const GodotType &parent_type = object_types[p_godot_type.parent_class_name];
+		p_output.append(vformat(" <: Godot%s", parent_type.julia_name));
 	}
 	p_output.append(" end\n\n");
-	p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n", fix_doc_description(p_godot_type.class_doc->brief_description), fix_doc_description(p_godot_type.class_doc->description)));
-	p_output.append(vformat("struct %s <: Godot%s\n", p_godot_type.julia_name, p_godot_type.julia_name));
+	p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n",
+			fix_doc_description(p_godot_type.class_doc->brief_description),
+			fix_doc_description(p_godot_type.class_doc->description)));
+	String class_name = p_godot_type.julia_name;
+	if (p_godot_type.is_singleton) {
+		class_name += JULIA_SINGLETON_INSTANCE_SUFFIX;
+	}
+	p_output.append(vformat("struct %s <: Godot%s\n", class_name, p_godot_type.julia_name));
 	p_output.append("\tnative_ptr::Ptr{Nothing}\n");
 	p_output.append("end\n\n");
-
-	// TODO: Handle singletons.
 
 	// Enums and constants.
 	p_output.append(vformat("baremodule %sInfo\n", p_godot_type.julia_name));
@@ -281,32 +286,74 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 	}
 	p_output.append("end\n\n");
 
+	// If the class is a singleton, then put its methods in a Julia module.
+	if (p_godot_type.is_singleton) {
+		p_output.append(vformat("module %s\n\n", p_godot_type.julia_name)); // TODO: Make it a baremodule instead?
+		p_output.append("using ..Godot: String, StringName, string_names");
+		if (p_godot_type.is_singleton) {
+			p_output.append(vformat(", %sInstance", p_godot_type.julia_name));
+		}
+		for (const GodotType *dependency : object_type_dependencies[p_godot_type.name]) {
+			String dependency_name = dependency->julia_name;
+			// TODO: Clean this up. This generates duplicate names. It works but it's not pretty.
+			int dot_pos = dependency_name.find(".");
+			if (dot_pos != -1) {
+				dependency_name = dependency_name.substr(0, dot_pos);
+			}
+			p_output.append(vformat(", %s", dependency_name));
+		}
+		p_output.append("\n\n");
+		p_output.append(vformat("singleton = %sInstance(C_NULL)\n\n", p_godot_type.julia_name));
+	}
+
 	// Methods.
 	for (const GodotMethod &godot_method : p_godot_type.methods) {
 		_generate_julia_method(p_godot_type, godot_method, p_output);
 	}
 
 	// Properties.
-	_generate_julia_properties(p_godot_type, p_output);
+	if (!p_godot_type.is_singleton) {
+		_generate_julia_properties(p_godot_type, p_output);
+	}
+	// NOTE: Properties on singletons are skipped. There are not many of them anyway. Call the setter/getter instead.
 
 	// TODO: Signals.
+
+	if (p_godot_type.is_singleton) {
+		p_output.append("end # module\n");
+	}
 }
 
 void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output) {
 	p_output.append("let\n");
 	p_output.append(vformat("\tglobal %s\n", p_godot_method.julia_name));
+	if (p_godot_type.is_singleton) {
+		p_output.append("\tglobal singleton\n");
+	}
 	p_output.append("\tmethod_bind = C_NULL\n");
-	p_output.append(vformat("\tfunction %s(self::Godot%s", p_godot_method.julia_name, p_godot_type.julia_name));
+	p_output.append(vformat("\tfunction %s(", p_godot_method.julia_name));
+	if (!p_godot_type.is_singleton) {
+		p_output.append(vformat("self::Godot%s", p_godot_type.julia_name));
+	}
 	int argc = p_godot_method.arguments.size();
 	for (int i = 0; i < argc; i++) {
 		const GodotType *argument_type = _get_type_or_null(p_godot_method.arguments[i].type);
 		// TODO: Handle argument_type == nullptr?
-		p_output.append(vformat(", %s::%s", p_godot_method.arguments[i].name, argument_type->julia_name));
+		if (!p_godot_type.is_singleton || i > 0) {
+			p_output.append(", ");
+		}
+		p_output.append(vformat("%s::%s", p_godot_method.arguments[i].name, argument_type->julia_name));
 		if (!p_godot_method.arguments[i].julia_default_value.is_empty()) {
 			p_output.append(vformat(" = %s", p_godot_method.arguments[i].julia_default_value));
 		}
 	}
 	p_output.append(")\n");
+	if (p_godot_type.is_singleton) {
+		p_output.append("\t\tglobal singleton\n");
+		p_output.append("\t\tif singleton.native_ptr == C_NULL\n");
+		p_output.append(vformat("\t\t\tsingleton = %sInstance(@ccall godot_julia_get_singleton(string_names._%s::Ref{StringName})::Ptr{Nothing})\n", p_godot_type.julia_name, p_godot_type.name));
+		p_output.append("\t\tend\n");
+	}
 	p_output.append("\t\tif method_bind == C_NULL\n");
 	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(string_names._%s::Ref{StringName}, string_names._%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
 	p_output.append("\t\tend\n");
@@ -342,7 +389,13 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	}
 	// TODO: Handle more complex argument types.
 
-	p_output.append(vformat("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, getfield(self, :native_ptr)::Ptr{Nothing}, %s, %s)::Cvoid\n", args_ptrcall_typed, ret_ptrcall_typed));
+	p_output.append("\t\t@ccall godot_julia_method_bind_ptrcall(method_bind::Ptr{Nothing}, ");
+	if (p_godot_type.is_singleton) {
+		p_output.append("getfield(singleton, :native_ptr)::Ptr{Nothing}");
+	} else {
+		p_output.append("getfield(self, :native_ptr)::Ptr{Nothing}");
+	}
+	p_output.append(vformat(", %s, %s)::Cvoid\n", args_ptrcall_typed, ret_ptrcall_typed));
 
 	if (return_type != nullptr) {
 		p_output.append("\t\treturn ");
@@ -441,41 +494,22 @@ void BindingsGenerator::_generate_julia_object_types_includes(StringBuilder &p_o
 	// So we have to take these dependencies into account when ordering the includes.
 
 	Vector<StringName> includes;
-	HashMap<StringName, HashSet<StringName>> type_dependencies;
 	for (const KeyValue<StringName, GodotType> &E : object_types) {
 		includes.push_back(E.key);
-		String class_name = E.key;
-		HashSet<StringName> dependencies;
-		if (E.value.parent_class_name != StringName()) {
-			dependencies.insert(E.value.parent_class_name);
-		}
-		for (const GodotMethod &method : E.value.methods) {
-			for (const GodotArgument &arg : method.arguments) {
-				const GodotType *type = _get_type_or_null(arg.type);
-				if (type == nullptr) {
-					continue;
-				}
-				String type_name = type->name;
-				int dot_pos = type_name.find(".");
-				if (dot_pos == -1) {
-					continue;
-				}
-				String dependency = type_name.substr(0, dot_pos);
-				if (dependency != class_name) {
-					dependencies.insert(dependency);
-				}
-			}
-		}
-		type_dependencies.insert(E.key, dependencies);
 	}
-
 	int includes_count = includes.size();
 	int i = 0;
 	while (i < includes_count) {
 		StringName current = includes[i];
 		int lowest_dependency = -1;
-		for (const StringName &dependency : type_dependencies[includes[i]]) {
-			lowest_dependency = MAX(lowest_dependency, includes.find(dependency));
+		for (const GodotType *dependency : object_type_dependencies[includes[i]]) {
+			String dependency_name = dependency->name;
+			// TODO: Clean this up. It works but it's not pretty.
+			int dot_pos = dependency_name.find(".");
+			if (dot_pos != -1) {
+				dependency_name = dependency_name.substr(0, dot_pos);
+			}
+			lowest_dependency = MAX(lowest_dependency, includes.find(dependency_name));
 		}
 		if (lowest_dependency > i) {
 			// Move the current include after its lowest dependency.
@@ -803,8 +837,29 @@ void BindingsGenerator::_populate_object_types() {
 		}
 
 		object_types.insert(godot_class.name, godot_class);
+	}
+}
 
-		// TODO: Singletons.
+void BindingsGenerator::_populate_object_type_dependencies() {
+	for (const KeyValue<StringName, GodotType> &E : object_types) {
+		String class_name = E.key;
+		List<const GodotType *> dependencies;
+		if (E.value.parent_class_name != StringName()) {
+			dependencies.push_back(&object_types[E.value.parent_class_name]);
+		}
+		for (const GodotMethod &method : E.value.methods) {
+			for (const GodotArgument &arg : method.arguments) {
+				const GodotType *arg_type = _get_type_or_null(arg.type);
+				if (arg_type && dependencies.find(arg_type) == nullptr) {
+					dependencies.push_back(arg_type);
+				}
+			}
+			const GodotType *return_type = _get_type_or_null(method.return_type);
+			if (return_type && dependencies.find(return_type) == nullptr) {
+				dependencies.push_back(return_type);
+			}
+		}
+		object_type_dependencies.insert(E.key, dependencies);
 	}
 }
 
@@ -1058,6 +1113,7 @@ void BindingsGenerator::_initialize() {
 	_populate_global_constants();
 	_populate_builtin_types();
 	_populate_object_types();
+	_populate_object_type_dependencies();
 	initialized = true;
 }
 

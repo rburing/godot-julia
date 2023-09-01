@@ -1,5 +1,6 @@
 #include "godot_julia.h"
 
+#include "core/config/engine.h"
 #include "core/object/class_db.h"
 #include "core/object/method_bind.h"
 #include "core/string/string_name.h"
@@ -32,6 +33,10 @@ GJ_API MethodBind *godot_julia_get_method_bind(const StringName *p_classname, co
 
 GJ_API void godot_julia_method_bind_ptrcall(MethodBind *p_method_bind, Object *p_instance, const void **p_args, void *p_ret) {
 	p_method_bind->ptrcall(p_instance, p_args, p_ret);
+}
+
+GJ_API Object *godot_julia_get_singleton(const StringName *p_classname) {
+	return Engine::get_singleton()->get_singleton_object(*p_classname);
 }
 
 #ifdef __cplusplus
