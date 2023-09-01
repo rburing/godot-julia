@@ -240,9 +240,11 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 		p_output.append(vformat(" <: Godot%s", parent_type.julia_name));
 	}
 	p_output.append(" end\n\n");
-	p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n",
-			fix_doc_description(p_godot_type.documentation->brief_description),
-			fix_doc_description(p_godot_type.documentation->description)));
+	if (!p_godot_type.is_singleton) {
+		p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n",
+				fix_doc_description(p_godot_type.documentation->brief_description),
+				fix_doc_description(p_godot_type.documentation->description)));
+	}
 	String class_name = p_godot_type.julia_name;
 	if (p_godot_type.is_singleton) {
 		class_name += JULIA_SINGLETON_INSTANCE_SUFFIX;
@@ -288,6 +290,9 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 
 	// If the class is a singleton, then put its methods in a Julia module.
 	if (p_godot_type.is_singleton) {
+		p_output.append(vformat("@doc raw\"\"\"%s\n\n%s\"\"\"\n",
+				fix_doc_description(p_godot_type.documentation->brief_description),
+				fix_doc_description(p_godot_type.documentation->description)));
 		p_output.append(vformat("module %s\n\n", p_godot_type.julia_name)); // TODO: Make it a baremodule instead?
 		p_output.append("using ..Godot: String, StringName, string_names");
 		if (p_godot_type.is_singleton) {
@@ -331,6 +336,10 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 		p_output.append("\tglobal singleton\n");
 	}
 	p_output.append("\tmethod_bind = C_NULL\n");
+	if (p_godot_method.documentation) {
+		p_output.append(vformat("\t@doc raw\"\"\"%s\"\"\"\n",
+				fix_doc_description(p_godot_method.documentation->description)));
+	}
 	p_output.append(vformat("\tfunction %s(", p_godot_method.julia_name));
 	if (!p_godot_type.is_singleton) {
 		p_output.append(vformat("self::Godot%s", p_godot_type.julia_name));
