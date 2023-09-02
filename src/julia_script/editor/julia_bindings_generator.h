@@ -76,6 +76,7 @@ class BindingsGenerator {
 		String name;
 		TypeReference type;
 
+		bool has_default_value = false;
 		Variant default_value;
 		String julia_default_value;
 

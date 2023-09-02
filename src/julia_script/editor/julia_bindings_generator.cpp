@@ -127,6 +127,14 @@ bool BindingsGenerator::_arg_default_value_from_variant(const Variant &p_val, Bi
 				r_arg.julia_default_value += "f0";
 			}
 		} break;
+		// String types.
+		case Variant::STRING: {
+			r_arg.julia_default_value = vformat("GodotString(\"%s\")", r_arg.julia_default_value);
+		} break;
+		case Variant::STRING_NAME: {
+			r_arg.julia_default_value = vformat("StringName(GodotString(\"%s\"))", r_arg.julia_default_value);
+		} break;
+		// Struct types.
 		case Variant::VECTOR2: {
 			Vector2 v = p_val;
 #ifdef REAL_T_IS_DOUBLE
@@ -329,7 +337,7 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 			p_output.append(", ");
 		}
 		p_output.append(vformat("%s::%s", p_godot_method.arguments[i].name, argument_type->julia_name));
-		if (!p_godot_method.arguments[i].julia_default_value.is_empty()) {
+		if (p_godot_method.arguments[i].has_default_value) {
 			p_output.append(vformat(" = %s", p_godot_method.arguments[i].julia_default_value));
 		}
 	}
@@ -630,6 +638,8 @@ void BindingsGenerator::_populate_object_types() {
 							argument_type == Variant::BOOL ||
 							argument_type == Variant::INT ||
 							argument_type == Variant::FLOAT ||
+							argument_type == Variant::STRING ||
+							argument_type == Variant::STRING_NAME ||
 							argument_type == Variant::VECTOR2 ||
 							argument_type == Variant::VECTOR2I ||
 							argument_type == Variant::VECTOR3 ||
@@ -677,6 +687,8 @@ void BindingsGenerator::_populate_object_types() {
 						return_info.type == Variant::BOOL ||
 						return_info.type == Variant::INT ||
 						return_info.type == Variant::FLOAT ||
+						return_info.type == Variant::STRING ||
+						return_info.type == Variant::STRING_NAME ||
 						return_info.type == Variant::VECTOR2 ||
 						return_info.type == Variant::VECTOR2I ||
 						return_info.type == Variant::VECTOR3 ||
@@ -732,6 +744,7 @@ void BindingsGenerator::_populate_object_types() {
 				godot_arg.name = escape_julia_keyword(godot_arg.name);
 
 				if (method_bind && method_bind->has_default_argument(i)) {
+					godot_arg.has_default_value = true;
 					bool defval_ok = _arg_default_value_from_variant(method_bind->get_default_argument(i), godot_arg);
 					ERR_FAIL_COND_MSG(!defval_ok,
 							"Cannot determine default value for argument '" + orig_arg_name + "' of method '" + godot_class.name + "." + godot_method.name + "'.");
@@ -952,6 +965,24 @@ void BindingsGenerator::_populate_builtin_types() {
 	godot_type.ptrcall_type = "Ref{Float64}";
 	godot_type.ptrcall_initial = "Ref{Float64}(0.0)";
 	godot_type.ptrcall_input = "Ref{Float64}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// String
+	godot_type.name = "String";
+	godot_type.julia_name = "GodotString";
+	godot_type.ptrcall_type = "Ref{GodotString}";
+	godot_type.ptrcall_initial = "Ref{GodotString}(GodotString(\"\"))";
+	godot_type.ptrcall_input = "Ref{GodotString}(%s)";
+	godot_type.ptrcall_output = "%s[]";
+	builtin_types.insert(godot_type.name, godot_type);
+
+	// StringName
+	godot_type.name = "StringName";
+	godot_type.julia_name = "StringName";
+	godot_type.ptrcall_type = "Ref{StringName}";
+	godot_type.ptrcall_initial = "Ref{StringName}(StringName(GodotString(\"\")))";
+	godot_type.ptrcall_input = "Ref{StringName}(%s)";
 	godot_type.ptrcall_output = "%s[]";
 	builtin_types.insert(godot_type.name, godot_type);
 
