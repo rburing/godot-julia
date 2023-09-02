@@ -19,6 +19,9 @@ Variant::Type JuliaScriptInstance::get_property_type(const StringName &p_name, b
 	return Variant::Type();
 }
 
+void JuliaScriptInstance::validate_property(PropertyInfo &p_property) const {
+}
+
 bool JuliaScriptInstance::property_can_revert(const StringName &p_name) const {
 	return false;
 }
@@ -69,7 +72,7 @@ Variant JuliaScriptInstance::call_const(const StringName &p_method, const Varian
 	return Variant();
 }
 
-void JuliaScriptInstance::notification(int p_notification) {
+void JuliaScriptInstance::notification(int p_notification, bool p_reversed) {
 }
 
 String JuliaScriptInstance::to_string(bool *r_valid) {

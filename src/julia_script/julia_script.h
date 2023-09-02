@@ -52,6 +52,7 @@ public:
 
 #ifdef TOOLS_ENABLED
 	Vector<DocData::ClassDoc> get_documentation() const override;
+	String get_class_icon_path() const override;
 	PropertyInfo get_class_category() const override;
 #endif // TOOLS_ENABLED
 

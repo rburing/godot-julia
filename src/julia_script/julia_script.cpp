@@ -152,6 +152,10 @@ Vector<DocData::ClassDoc> JuliaScript::get_documentation() const {
 	return Vector<DocData::ClassDoc>();
 }
 
+String JuliaScript::get_class_icon_path() const {
+	return "";
+}
+
 PropertyInfo JuliaScript::get_class_category() const {
 	return PropertyInfo();
 }
