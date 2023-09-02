@@ -1,7 +1,7 @@
 """
 A 4-element structure that can be used to represent 4D grid coordinates or any other quadruplet of integers.
 """
-mutable struct Vector4i
+struct Vector4i
     x::Int32
     y::Int32
     z::Int32
@@ -18,10 +18,6 @@ end
 
 Vector4i() = Vector4i(0, 0, 0, 0)
 
-# Equality.
-
-Base.:(==)(v1::Vector4i, v2::Vector4i) = v1.x == v2.x && v1.y == v2.y && v1.z == v2.z && v1.w == v2.w
-
 # Indexing.
 
 function Base.getindex(v::Vector4i, i::Int)
@@ -34,19 +30,6 @@ function Base.getindex(v::Vector4i, i::Int)
         return Core.getfield(v, :z)
     else
         return Core.getfield(v, :w)
-    end
-end
-
-function Base.setindex!(v::Vector4i, entry, i)
-    1 <= i <= 4 || Core.throw(Core.BoundsError(v, i))
-    if i == 1
-        Core.setfield!(v, :x, entry)
-    elseif i == 2
-        Core.setfield!(v, :y, entry)
-    elseif i == 3
-        Core.setfield!(v, :z, entry)
-    else
-        Core.setfield!(v, :w, entry)
     end
 end
 
@@ -63,14 +46,17 @@ Base.:+(v::Vector4i) = Vector4i(v.x, v.y, v.z, v.w)
 Base.:-(v1::Vector4i, v2::Vector4i) = Vector4i(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z, v1.w - v2.w)
 
 function Base.:+(summands::Vector4i...)
-    result = Vector4i(0, 0, 0, 0)
+    sum_x::Int32 = 0
+    sum_y::Int32 = 0
+    sum_z::Int32 = 0
+    sum_w::Int32 = 0
     for v in summands
-        result.x += v.x
-        result.y += v.y
-        result.z += v.z
-        result.w += v.w
+        sum_x += v.x
+        sum_y += v.y
+        sum_z += v.z
+        sum_w += v.w
     end
-    return result
+    return Vector4i(sum_x, sum_y, sum_z, sum_w)
 end
 
 Base.:*(v::Vector4i, a::Number) = Vector4i(a*v.x, a*v.y, a*v.z, a*v.w)

@@ -3,7 +3,7 @@ include("generated/core_constants.jl")
 """
 A 3-element structure that can be used to represent 3D coordinates or any other triplet of floating point values.
 """
-mutable struct Vector3
+struct Vector3
     x::RealT
     y::RealT
     z::RealT
@@ -19,10 +19,6 @@ end
 
 Vector3() = Vector3(0, 0, 0)
 
-# Equality.
-
-Base.:(==)(v1::Vector3, v2::Vector3) = v1.x == v2.x && v1.y == v2.y && v1.z == v2.z
-
 # Indexing.
 
 function Base.getindex(v::Vector3, i::Int)
@@ -33,17 +29,6 @@ function Base.getindex(v::Vector3, i::Int)
         return Core.getfield(v, :y)
     else
         return Core.getfield(v, :z)
-    end
-end
-
-function Base.setindex!(v::Vector3, entry, i)
-    1 <= i <= 3 || Core.throw(Core.BoundsError(v, i))
-    if i == 1
-        Core.setfield!(v, :x, entry)
-    elseif i == 2
-        Core.setfield!(v, :y, entry)
-    else
-        Core.setfield!(v, :z, entry)
     end
 end
 
@@ -60,13 +45,15 @@ Base.:+(v::Vector3) = Vector3(v.x, v.y, v.z)
 Base.:-(v1::Vector3, v2::Vector3) = Vector3(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z)
 
 function Base.:+(summands::Vector3...)
-    result = Vector3(0, 0, 0)
+    sum_x::RealT = 0
+    sum_y::RealT = 0
+    sum_z::RealT = 0
     for v in summands
-        result.x += v.x
-        result.y += v.y
-        result.z += v.z
+        sum_x += v.x
+        sum_y += v.y
+        sum_z += v.z
     end
-    return result
+    return Vector3(sum_x, sum_y, sum_z)
 end
 
 Base.:*(v::Vector3, a::Number) = Vector3(a*v.x, a*v.y, a*v.z)
