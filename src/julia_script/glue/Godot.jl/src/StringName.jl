@@ -8,3 +8,12 @@ mutable struct StringName
 		finalizer(destroy_string_name, string_name)
 	end
 end
+
+string_names = Dict{Symbol, StringName}()
+
+function get_string_name!(s::Symbol)
+	global string_names
+	get!(string_names, s) do
+		StringName(String(s))
+	end
+end

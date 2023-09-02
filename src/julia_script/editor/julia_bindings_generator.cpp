@@ -210,29 +210,6 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 	}
 }
 
-void BindingsGenerator::_generate_string_names(StringBuilder &p_output) {
-	HashSet<StringName> string_names;
-	for (const KeyValue<StringName, GodotType> &E : object_types) {
-		string_names.insert(E.value.name);
-		for (const GodotMethod &godot_method : E.value.methods) {
-			string_names.insert(godot_method.name);
-		}
-	}
-	p_output.append("mutable struct StringNames\n");
-	for (const StringName &string_name : string_names) {
-		p_output.append(vformat("\t_%s::StringName\n", string_name));
-	}
-	p_output.append("\tStringNames() = new()\n");
-	p_output.append("end\n\n");
-	p_output.append("string_names = StringNames()\n\n");
-
-	p_output.append("function initialize_string_names()\n");
-	for (const StringName &string_name : string_names) {
-		p_output.append(vformat("\tstring_names._%s = StringName(\"%s\")\n", string_name, string_name));
-	}
-	p_output.append("end\n\n");
-}
-
 void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output) {
 	p_output.append(vformat("abstract type Godot%s", p_godot_type.julia_name));
 	if (p_godot_type.parent_class_name != StringName()) {
@@ -294,7 +271,7 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 				fix_doc_description(p_godot_type.documentation->brief_description),
 				fix_doc_description(p_godot_type.documentation->description)));
 		p_output.append(vformat("module %s\n\n", p_godot_type.julia_name)); // TODO: Make it a baremodule instead?
-		p_output.append("using ..Godot: String, StringName, string_names");
+		p_output.append("using ..Godot: String, StringName, get_string_name!");
 		if (p_godot_type.is_singleton) {
 			p_output.append(vformat(", %sInstance", p_godot_type.julia_name));
 		}
@@ -360,11 +337,11 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	if (p_godot_type.is_singleton) {
 		p_output.append("\t\tglobal singleton\n");
 		p_output.append("\t\tif singleton.native_ptr == C_NULL\n");
-		p_output.append(vformat("\t\t\tsingleton = %sInstance(@ccall godot_julia_get_singleton(string_names._%s::Ref{StringName})::Ptr{Nothing})\n", p_godot_type.julia_name, p_godot_type.name));
+		p_output.append(vformat("\t\t\tsingleton = %sInstance(@ccall godot_julia_get_singleton(get_string_name!(:%s)::Ref{StringName})::Ptr{Nothing})\n", p_godot_type.julia_name, p_godot_type.name));
 		p_output.append("\t\tend\n");
 	}
 	p_output.append("\t\tif method_bind == C_NULL\n");
-	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(string_names._%s::Ref{StringName}, string_names._%s::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
+	p_output.append(vformat("\t\t\tmethod_bind = @ccall godot_julia_get_method_bind(get_string_name!(:%s)::Ref{StringName}, get_string_name!(:%s)::Ref{StringName})::Ptr{Nothing}\n", p_godot_type.name, p_godot_method.name));
 	p_output.append("\t\tend\n");
 	String ret_ptrcall_typed;
 	const GodotType *return_type = nullptr;
@@ -1156,17 +1133,6 @@ Error BindingsGenerator::generate_julia_sources(const String &p_sources_dir) {
 		_generate_global_constants(constants_source);
 		String output_file = p_sources_dir.path_join("constants.jl");
 		Error save_err = _save_file(output_file, constants_source);
-		if (save_err != OK) {
-			return save_err;
-		}
-	}
-
-	// Generate source file for string names.
-	{
-		StringBuilder strings_source;
-		_generate_string_names(strings_source);
-		String output_file = p_sources_dir.path_join("string_names.jl");
-		Error save_err = _save_file(output_file, strings_source);
 		if (save_err != OK) {
 			return save_err;
 		}

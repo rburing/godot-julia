@@ -154,7 +154,6 @@ class BindingsGenerator {
 
 	void _generate_core_constants(StringBuilder &p_output);
 	void _generate_global_constants(StringBuilder &p_output);
-	void _generate_string_names(StringBuilder &p_output);
 	void _generate_julia_type(const GodotType &p_godot_type, StringBuilder &p_output);
 	void _generate_julia_method(const GodotType &p_godot_type, const GodotMethod &p_godot_method, StringBuilder &p_output);
 	void _generate_julia_properties(const GodotType &p_godot_type, StringBuilder &p_output);

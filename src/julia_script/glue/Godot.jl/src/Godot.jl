@@ -3,7 +3,6 @@ module Godot
 include("generated/constants.jl")
 include("String.jl")
 include("StringName.jl")
-include("generated/string_names.jl")
 include("Vector2.jl")
 include("Vector2i.jl")
 include("Vector3.jl")
