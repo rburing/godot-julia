@@ -99,7 +99,7 @@ Error JuliaScript::reload(bool p_keep_state) {
 	// TODO: Handle reloading requests from threads.
 	ERR_FAIL_COND_V_MSG(Thread::get_caller_id() != Thread::get_main_id(), FAILED, "Tried to reload Julia script " + get_path() + " from a separate thread; this is not supported for now.");
 
-	jl_value_t *julia_module_maybe = jl_eval_string(source_code.utf8());
+	jl_value_t *julia_module_maybe = jl_eval_string(source_code.utf8().get_data());
 	if (jl_exception_occurred()) {
 		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary.
 		jl_value_t *exception_str = jl_call2(jl_get_function(jl_base_module, "sprint"),
@@ -135,11 +135,12 @@ Error JuliaScript::reload(bool p_keep_state) {
 
 	// Rooting to protect from the garbage collector.
 	jl_binding_t *b_module = jl_get_binding_wr(jl_main_module, julia_module->name, 1);
-	jl_checked_assignment(b_module, (jl_value_t *)julia_module);
+	jl_checked_assignment(b_module, jl_main_module, julia_module->name, (jl_value_t *)julia_module);
 
-	jl_binding_t *b_instances = jl_get_binding_wr(julia_module, jl_symbol("#GODOT_INSTANCES#"), 1);
+    jl_sym_t *sym_instances = jl_symbol("#GODOT_INSTANCES#");
+	jl_binding_t *b_instances = jl_get_binding_wr(julia_module, sym_instances, 1);
 	julia_instances = jl_eval_string("IdDict()");
-	jl_checked_assignment(b_instances, julia_instances);
+	jl_checked_assignment(b_instances, julia_module, sym_instances, julia_instances);
 
 	// TODO: Update script class info.
 
@@ -147,6 +148,10 @@ Error JuliaScript::reload(bool p_keep_state) {
 }
 
 #ifdef TOOLS_ENABLED
+
+StringName JuliaScript::get_doc_class_name() const {
+    return StringName();
+}
 
 Vector<DocData::ClassDoc> JuliaScript::get_documentation() const {
 	return Vector<DocData::ClassDoc>();

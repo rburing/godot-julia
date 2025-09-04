@@ -51,6 +51,7 @@ public:
 	Error reload(bool p_keep_state = false) override;
 
 #ifdef TOOLS_ENABLED
+	virtual StringName get_doc_class_name() const override;
 	Vector<DocData::ClassDoc> get_documentation() const override;
 	String get_class_icon_path() const override;
 	PropertyInfo get_class_category() const override;
@@ -61,6 +62,7 @@ public:
 
 	bool is_tool() const override { return tool; }
 	bool is_valid() const override { return valid; }
+	bool is_abstract() const override { return false; };
 
 	ScriptLanguage *get_language() const override;
 

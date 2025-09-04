@@ -4,8 +4,6 @@
 #include "core/object/script_language.h"
 #include "core/typedefs.h"
 
-using namespace godot;
-
 class JuliaLanguage : public ScriptLanguage {
 	GDCLASS(JuliaLanguage, ScriptLanguage);
 
@@ -32,12 +30,13 @@ public:
 	void finish() override;
 
 	/* EDITOR FUNCTIONS */
-	void get_reserved_words(List<String> *p_words) const override;
-	bool is_control_flow_keyword(String p_string) const override;
-	void get_comment_delimiters(List<String> *p_delimiters) const override;
-	void get_string_delimiters(List<String> *p_delimiters) const override;
+	Vector<String> get_reserved_words() const override;
+	bool is_control_flow_keyword(const String &p_string) const override;
+	Vector<String> get_comment_delimiters() const override;
+	Vector<String> get_doc_comment_delimiters() const override;
+	Vector<String> get_string_delimiters() const override;
 	Ref<Script> make_template(const String &p_template, const String &p_class_name, const String &p_base_class_name) const override;
-	Vector<ScriptTemplate> get_built_in_templates(StringName p_object) override { return Vector<ScriptTemplate>(); }
+	Vector<ScriptTemplate> get_built_in_templates(const StringName &p_object) override { return Vector<ScriptTemplate>(); }
 	bool is_using_templates() override { return false; }
 	bool validate(const String &p_script, const String &p_path = "", List<String> *r_functions = nullptr, List<ScriptError> *r_errors = nullptr, List<Warning> *r_warnings = nullptr, HashSet<int> *r_safe_lines = nullptr) const override;
 	String validate_path(const String &p_path) const override;
@@ -81,6 +80,7 @@ public:
 	Vector<StackInfo> debug_get_current_stack_info() override;
 
 	void reload_all_scripts() override;
+	void reload_scripts(const Array &p_scripts, bool p_soft_reload) override;
 	void reload_tool_script(const Ref<Script> &p_script, bool p_soft_reload) override;
 	/* LOADER FUNCTIONS */
 
@@ -91,6 +91,7 @@ public:
 
 	void profiling_start() override;
 	void profiling_stop() override;
+	void profiling_set_save_native_calls(bool p_enable) override;
 
 	int profiling_get_accumulated_data(ProfilingInfo *p_info_arr, int p_info_max) override;
 	int profiling_get_frame_data(ProfilingInfo *p_info_arr, int p_info_max) override;
@@ -98,7 +99,7 @@ public:
 	void frame() override;
 
 	bool handles_global_class_type(const String &p_type) const override;
-	String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr) const override;
+	String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr, bool *r_is_abstract = nullptr, bool *r_is_tool = nullptr) const override;
 
 	JuliaLanguage();
 	virtual ~JuliaLanguage();

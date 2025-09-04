@@ -1,6 +1,6 @@
 #include "julia_bindings_generator.h"
 
-#if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
+#ifdef TOOLS_ENABLED
 
 #include "core/core_constants.h"
 #include "core/io/dir_access.h"
@@ -8,7 +8,7 @@
 #include "core/object/class_db.h"
 #include "core/templates/hash_set.h"
 #include "core/templates/vector.h"
-#include "editor/editor_help.h"
+#include "editor/doc/editor_help.h"
 
 #include <julia.h>
 
@@ -197,7 +197,7 @@ void BindingsGenerator::_generate_global_constants(StringBuilder &p_output) {
 		Vector<GodotConstant> extraneous_constants;
 		HashMap<int64_t, const GodotConstant *> value_to_constant;
 		// TODO: Use genum.is_flags?
-		p_output.append(vformat("@enum %s begin\n", genum.julia_name));
+		p_output.append(vformat("@enum %s::Int64 begin\n", genum.julia_name));
 		for (const GodotConstant &gconstant : genum.constants) {
 			if (!value_to_constant.has(gconstant.value)) {
 				p_output.append(vformat("%s = %d\n", gconstant.name, gconstant.value));
@@ -247,7 +247,7 @@ void BindingsGenerator::_generate_julia_type(const GodotType &p_godot_type, Stri
 		Vector<GodotConstant> extraneous_constants;
 		HashMap<int64_t, const GodotConstant *> value_to_constant;
 		// TODO: Use genum.is_flags?
-		p_output.append(vformat("@enum %s begin\n", genum.julia_name));
+		p_output.append(vformat("@enum %s::Int64 begin\n", genum.julia_name));
 		for (const GodotConstant &gconstant : genum.constants) {
 			if (!value_to_constant.has(gconstant.value)) {
 				p_output.append(vformat("%s = %d\n", gconstant.name, gconstant.value));
@@ -331,14 +331,14 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	}
 	int argc = p_godot_method.arguments.size();
 	for (int i = 0; i < argc; i++) {
-		const GodotType *argument_type = _get_type_or_null(p_godot_method.arguments[i].type);
+		const GodotType *argument_type = _get_type_or_null(p_godot_method.arguments.get(i).type);
 		// TODO: Handle argument_type == nullptr?
 		if (!p_godot_type.is_singleton || i > 0) {
 			p_output.append(", ");
 		}
-		p_output.append(vformat("%s::%s", p_godot_method.arguments[i].name, argument_type->julia_name));
-		if (p_godot_method.arguments[i].has_default_value) {
-			p_output.append(vformat(" = %s", p_godot_method.arguments[i].julia_default_value));
+		p_output.append(vformat("%s::%s", p_godot_method.arguments.get(i).name, argument_type->julia_name));
+		if (p_godot_method.arguments.get(i).has_default_value) {
+			p_output.append(vformat(" = %s", p_godot_method.arguments.get(i).julia_default_value));
 		}
 	}
 	p_output.append(")\n");
@@ -372,8 +372,8 @@ void BindingsGenerator::_generate_julia_method(const GodotType &p_godot_type, co
 	} else {
 		p_output.append("\t\targs = [");
 		for (int i = 0; i < argc; i++) {
-			const GodotType *arg_type = _get_type_or_null(p_godot_method.arguments[i].type);
-			p_output.append(vformat(arg_type->ptrcall_input, p_godot_method.arguments[i].name));
+			const GodotType *arg_type = _get_type_or_null(p_godot_method.arguments.get(i).type);
+			p_output.append(vformat(arg_type->ptrcall_input, p_godot_method.arguments.get(i).name));
 			if (i != argc - 1) {
 				p_output.append(", ");
 			}
@@ -1205,7 +1205,7 @@ Error BindingsGenerator::generate_julia_sources(const String &p_sources_dir) {
 Error BindingsGenerator::install_julia_package(const String &p_package_dir) {
 	// TODO: Don't use Pkg.develop, and build a sysimage instead?
 	jl_eval_string("using Pkg");
-	jl_eval_string(("Pkg.develop(path=\"" + p_package_dir + "\")").utf8());
+	jl_eval_string(("Pkg.develop(path=\"" + p_package_dir + "\")").utf8().get_data());
 
 	if (jl_exception_occurred()) {
 		// None of these allocate, so a gc-root (JL_GC_PUSH) is not necessary.
@@ -1232,7 +1232,7 @@ void JuliaBindingsGenerator::initialize() {
 		return;
 	}
 
-	String glue_dir_path = cmdline_args[0];
+	String glue_dir_path = cmdline_args.get(0);
 
 	BindingsGenerator bindings_generator;
 	bindings_generator.set_log_print_enabled(true);
@@ -1261,4 +1261,4 @@ bool JuliaBindingsGenerator::process(double p_delta) {
 	return true; // Exit.
 }
 
-#endif
+#endif // TOOLS_ENABLED

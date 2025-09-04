@@ -12,7 +12,7 @@ extern "C" {
 
 GJ_API void godot_julia_string_new_from_utf16_chars(String *r_string, const char16_t *p_chars) {
 	memnew_placement(r_string, String());
-	r_string->parse_utf16(p_chars);
+	r_string->append_utf16(p_chars);
 }
 
 GJ_API void godot_julia_string_destroy(String *p_string) {

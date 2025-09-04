@@ -41,7 +41,7 @@ bool JuliaScriptInstance::has_method(const StringName &p_method) const {
 }
 
 Variant JuliaScriptInstance::callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
-	jl_function_t *function = jl_get_function(script->julia_module, String(p_method).utf8());
+	jl_function_t *function = jl_get_function(script->julia_module, String(p_method).utf8().get_data());
 	if (!function) {
 		r_error.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();

@@ -1,9 +1,7 @@
 #ifndef JULIA_BINDINGS_GENERATOR_H
 #define JULIA_BINDINGS_GENERATOR_H
 
-#include "core/typedefs.h" // for DEBUG_METHODS_ENABLED
-
-#if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
+#ifdef TOOLS_ENABLED
 
 #include "core/doc_data.h"
 #include "core/os/main_loop.h"
@@ -187,6 +185,6 @@ class JuliaBindingsGenerator : public MainLoop {
 	bool process(double p_delta) override;
 };
 
-#endif
+#endif // TOOLS_ENABLED
 
 #endif // JULIA_BINDINGS_GENERATOR_H

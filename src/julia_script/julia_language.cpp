@@ -29,17 +29,24 @@ void JuliaLanguage::finish() {
 
 /* EDITOR FUNCTIONS */
 
-void JuliaLanguage::get_reserved_words(List<String> *p_words) const {
+Vector<String> JuliaLanguage::get_reserved_words() const {
+    return Vector<String>();
 }
 
-bool JuliaLanguage::is_control_flow_keyword(String p_string) const {
+bool JuliaLanguage::is_control_flow_keyword(const String &p_string) const {
 	return false;
 }
 
-void JuliaLanguage::get_comment_delimiters(List<String> *p_delimiters) const {
+Vector<String> JuliaLanguage::get_comment_delimiters() const {
+    return Vector<String>();
 }
 
-void JuliaLanguage::get_string_delimiters(List<String> *p_delimiters) const {
+Vector<String> JuliaLanguage::get_doc_comment_delimiters() const {
+    return Vector<String>();
+}
+
+Vector<String> JuliaLanguage::get_string_delimiters() const {
+    return Vector<String>();
 }
 
 Ref<Script> JuliaLanguage::make_template(const String &p_template, const String &p_class_name, const String &p_base_class_name) const {
@@ -132,6 +139,9 @@ Vector<ScriptLanguage::StackInfo> JuliaLanguage::debug_get_current_stack_info() 
 void JuliaLanguage::reload_all_scripts() {
 }
 
+void JuliaLanguage::reload_scripts(const Array &p_scripts, bool p_soft_reload) {
+}
+
 void JuliaLanguage::reload_tool_script(const Ref<Script> &p_script, bool p_soft_reload) {
 }
 
@@ -156,6 +166,9 @@ void JuliaLanguage::profiling_start() {
 void JuliaLanguage::profiling_stop() {
 }
 
+void JuliaLanguage::profiling_set_save_native_calls(bool p_enable) {
+}
+
 int JuliaLanguage::profiling_get_accumulated_data(ProfilingInfo *p_info_arr, int p_info_max) {
 	return 0;
 }
@@ -171,14 +184,14 @@ bool JuliaLanguage::handles_global_class_type(const String &p_type) const {
 	return false;
 }
 
-String JuliaLanguage::get_global_class_name(const String &p_path, String *r_base_type, String *r_icon_path) const {
+String JuliaLanguage::get_global_class_name(const String &p_path, String *r_base_type, String *r_icon_path, bool *r_is_abstract, bool *r_is_tool) const {
 	return "";
 }
 
 JuliaLanguage::JuliaLanguage() {
 	ERR_FAIL_COND_MSG(singleton, "Julia singleton already exists.");
 	singleton = this;
-	string_names._script_source = StaticCString::create("script/source");
+	string_names._script_source = "script/source";
 }
 
 JuliaLanguage::~JuliaLanguage() {

@@ -1,44 +1,39 @@
 #!/usr/bin/env python
 
 Import("env")
-Import("env_modules")
 
-env_julia = env_modules.Clone()
+env_julia = env.Clone()
 
 # Add the path to julia.h as an include directory.
 julia_include = env["julia_include"]
 env_julia.Append(CPPPATH=[julia_include])
 
-# Position-independent code is required for a shared library.
+# Position-independent code is required to embed Julia.
 env_julia.Append(CCFLAGS=['-fPIC'])
 
-# Don't inject Godot's dependencies into our shared library.
+# Don't inject Godot's dependencies into our library.
 env_julia['LIBS'] = []
 
-# Collect all source files.
+# Collect all source files (except for the glue).
 module_sources = []
 module_sources += env_julia.Glob("*.cpp")
-module_sources += env_julia.Glob("glue/*.cpp")
 if env.editor_build:
     module_sources += env_julia.Glob("editor/*.cpp")
 
-# Define the shared library; build it next to the Godot binary.
-shared_lib = env_julia.SharedLibrary(target='#bin/julia_script', source=module_sources)
+env_julia.add_source_files(env.modules_sources, module_sources)
 
-# Tell the linker where to find the Julia library and our own shared library.
+# Define the shared library with the glue (C functions for Julia to call).
+glue_sources = env_julia.Glob("glue/*.cpp")
+shared_lib = env_julia.SharedLibrary(target='#bin/godot_julia_glue', source=glue_sources)
+
+# Tell the linker where to find the Julia shared library and our shared library with the glue.
 julia_lib = env["julia_lib"]
-env.Append(LIBPATH=[julia_lib, '#bin/'])
-
-# SCons wants the name of the library with its custom suffixes but without the final ".so".
+env.Append(LIBPATH=[julia_lib, '#bin/obj/bin'])
 shared_lib_shim = shared_lib[0].name.rsplit('.', 1)[0]
 env.Append(LIBS=["julia", shared_lib_shim])
 
-# Allow the Godot binary to find the shared libraries more easily, without setting LD_LIBRARY_PATH etc.
-env.Append(
-    LINKFLAGS=[
-        '-Wl,-rpath,"' + julia_lib + '"',
-        '-Wl,-rpath,"' + Dir('#bin').srcnode().abspath + '"',
-    ]
-)
-
-env.Depends(env.modules_sources, shared_lib)
+# Allow the Godot binary to the shared libraries more easily, without setting LD_LIBRARY_PATH etc.
+env.Append(LINKFLAGS=[
+    '-Wl,-rpath,"' + julia_lib + '"',
+    '-Wl,-rpath,"' + Dir('#bin/obj/bin').srcnode().abspath + '"',
+])
