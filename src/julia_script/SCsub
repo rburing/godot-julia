@@ -14,26 +14,30 @@ env_julia.Append(CCFLAGS=['-fPIC'])
 # Don't inject Godot's dependencies into our library.
 env_julia['LIBS'] = []
 
-# Collect all source files (except for the glue).
+# Collect all source files.
 module_sources = []
 module_sources += env_julia.Glob("*.cpp")
+module_sources += env_julia.Glob("glue/*.cpp")
 if env.editor_build:
     module_sources += env_julia.Glob("editor/*.cpp")
 
-env_julia.add_source_files(env.modules_sources, module_sources)
+# Define the static library manually so we can get its path below.
+lib_julia_script = env_julia.StaticLibrary('module_julia_script', module_sources)
 
-# Define the shared library with the glue (C functions for Julia to call).
-glue_sources = env_julia.Glob("glue/*.cpp")
-shared_lib = env_julia.SharedLibrary(target='#bin/godot_julia_glue', source=glue_sources)
-
-# Tell the linker where to find the Julia shared library and our shared library with the glue.
+# Tell the linker where to find the Julia shared library.
 julia_lib = env["julia_lib"]
-env.Append(LIBPATH=[julia_lib, '#bin/obj/bin'])
-shared_lib_shim = shared_lib[0].name.rsplit('.', 1)[0]
-env.Append(LIBS=["julia", shared_lib_shim])
+env.Append(LIBPATH=[julia_lib])
 
-# Allow the Godot binary to the shared libraries more easily, without setting LD_LIBRARY_PATH etc.
+# NOTE: We inject the dependency on our static library here to ensure it gets built.
+env.Append(LIBS=["julia", lib_julia_script])
+
 env.Append(LINKFLAGS=[
+    # Export the symbols of the godot_julia_* glue functions, to be called by Julia.
+    '-Wl,--dynamic-list=' + File('glue/godot_julia.map').abspath,
+    # Ensure the glue code gets linked, which is needed because it is never called inside the C++ code.
+    '-Wl,--whole-archive',
+    lib_julia_script[0],
+    '-Wl,--no-whole-archive',
+    # Allow the Godot binary to find the Julia shared library more easily, without setting LD_LIBRARY_PATH etc.
     '-Wl,-rpath,"' + julia_lib + '"',
-    '-Wl,-rpath,"' + Dir('#bin/obj/bin').srcnode().abspath + '"',
 ])
